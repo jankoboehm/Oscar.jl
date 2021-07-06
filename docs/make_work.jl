@@ -16,10 +16,10 @@ import Documenter.Documents: Document, Page
 #=
  copied from Documenter (0.26.1)
 
- Adds the loop to collect the AA/Nemo/Hecke doc files into the 
+ Adds the loop to collect the AA/Nemo/Hecke doc files into the
  build tree of Oscar.
 
-=# 
+=#
 function Selectors.runner(::Type{SetupBuildDirectory}, doc::Documents.Document)
     @info "SetupBuildDirectory: setting up build directory."
 
@@ -131,6 +131,9 @@ end
 
 # new signature: trunc is added to sanitize paths (truncate)
 function Documenter.Documents.addpage!(doc::Document, src::AbstractString, dst::AbstractString, wd::AbstractString, trunc::AbstractString)
+    if occursin(trunc, dst)
+      dst = sanitize_dst(dst, trunc)
+    end
     page = Page(src, dst, wd)
     # page's identifier is the path relative to the `doc.user.source` directory
     name = normpath(relpath(src, doc.user.source))
@@ -164,6 +167,11 @@ function sanitize(a::AbstractString, n::AbstractString)
   return joinpath(b[1], b[3:end]...)
 end
 
+function sanitize_dst(a::AbstractString, n::AbstractString)
+  b = splitpath(replace(a, Regex(".*$(n)") => n))
+  return joinpath("build", b[1], b[3:end]...)
+end
+
 bla = normpath(joinpath(dirname(pathof(Hecke)), "..", "docs", "src"))
 const hecke = sanitize(bla, "Hecke")
 
@@ -173,86 +181,34 @@ const nemo = sanitize(bla, "Nemo")
 bla = normpath(joinpath(dirname(pathof(AbstractAlgebra)), "..", "docs", "src"))
 const aa = sanitize(bla, "AbstractAlgebra")
 
-bib = CitationBibliography(joinpath(@__DIR__, "oscar_references.bib"))
+bib = CitationBibliography(joinpath(@__DIR__, "oscar_references.bib"), sorting = :nyt)
 
-DocMeta.setdocmeta!(Oscar, :DocTestSetup, :(using Oscar); recursive = true)
-DocMeta.setdocmeta!(Hecke, :DocTestSetup, :(using Hecke); recursive = true)
+function doit(strict::Bool = true, local_build::Bool = false)
 
-makedocs(bib,
-         format   = Documenter.HTML(prettyurls = !local_build),
+  s = prod(eachline(joinpath(Oscar.oscardir, "docs", "doc.main")))
+  s = replace(s, r"\$\(aa\)" => "$aa")
+  s = replace(s, r"\$\(nemo\)" => "$nemo")
+  s = replace(s, r"\$\(hecke\)" => "$hecke")
+
+
+  doc = Meta.eval(Meta.parse(s))
+
+  cd(joinpath(Oscar.oscardir, "docs")) do
+
+  DocMeta.setdocmeta!(Oscar, :DocTestSetup, :(using Oscar); recursive = true)
+  DocMeta.setdocmeta!(Hecke, :DocTestSetup, :(using Hecke); recursive = true)
+
+  makedocs(bib,
+         format   = Documenter.HTML(prettyurls = !local_build, collapselevel = 1),
 #         format   = Documenter.HTML(),
 #         format   = Markdown(),
          sitename = "Oscar.jl",
          modules = [Oscar, Hecke, Nemo, AbstractAlgebra, Singular],
          clean = true,
          doctest = true,
-         strict = true,
+         strict = strict,
          checkdocs = :none,
-         pages    = [
-             "index.md",
-             "Rings" => [ "$(aa)/rings.md",
-                          "Rings/integer.md",
-                          "Univariate Polynomials" => [
-                            "$(aa)/polynomial_rings.md",
-                            "$(aa)/polynomial.md"],
-                          "Multivariate Polynomials" => [
-                            "$(aa)/mpolynomial_rings.md",
-                            "$(aa)/mpolynomial.md"],
-                          "Orders" => [
-                            "$(hecke)/orders/introduction.md",
-                            "$(hecke)/orders/orders.md",
-                            "$(hecke)/orders/elements.md",
-                            "$(hecke)/orders/ideals.md",
-                            "$(hecke)/orders/frac_ideals.md"],
-                          "Series Rings" => [
-                              "$(aa)/series_rings.md",
-                              "$(aa)/series.md",
-                              "$(aa)/puiseux.md",
-                              "$(nemo)/series.md",
-                              "$(nemo)/puiseux.md"],
-                         ],
-             "Fields" => [            
-                          "$(aa)/fields.md",
-			  "Rings/rational.md",
-                          "Number Fields" => [
-                            "$(hecke)/number_fields/intro.md",
-                            "$(hecke)/number_fields/basics.md",
-                            "$(hecke)/number_fields/elements.md"],
-                          "$(hecke)/FacElem.md",
-                          "$(hecke)/class_fields/intro.md",
-                          "$(aa)/fields.md",
-                          "$(aa)/fraction_fields.md",
-                          "$(aa)/fraction.md",
-                          "Local Fields" => [
-                              "$(nemo)/padic.md",
-                              "$(nemo)/qadic.md"],
-                          "$(nemo)/finitefield.md",    
-                         ],
-             "Groups" => [ "Groups/groups.md",
-                           "$(hecke)/abelian/introduction.md"
-                         ],
-             "Linear Algebra" => [ "$(hecke)/sparse/intro.md",
-                                   "$(aa)/matrix_spaces.md",
-                                   "$(aa)/matrix.md",
-                                   "$(aa)/matrix_algebras.md",
-                     "Modules" => ["$(aa)/module.md",
-                                    "$(aa)/free_module.md",
-                                    "$(aa)/submodule.md",
-                                    "$(aa)/quotient_module.md",
-                                    "$(aa)/direct_sum.md",
-                                    "$(aa)/module_homomorphism.md"],
-                     "Quadratic and Hermitian forms" => [
-                                   "$(hecke)/quad_forms/introduction.md",
-                                   "$(hecke)/quad_forms/basics.md",
-                                   "$(hecke)/quad_forms/lattices.md"],
-                           ],
+         pages    = doc)
+end
 
-             "Commutative Algebra" => ["CommutativeAlgebra/ca.md",
-	                               "CommutativeAlgebra/ca_rings.md",
-	                               "CommutativeAlgebra/ca_ideals.md",
-	                               "CommutativeAlgebra/ca_modules.md",
-				       "CommutativeAlgebra/ca_affine_algebras.md",
-				       "CommutativeAlgebra/ca_invariant_theory.md"],
-             "References" => "references.md",
-         ]
-)
+end

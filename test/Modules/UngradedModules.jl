@@ -2,6 +2,11 @@ using Random
 
 RNG = Random.MersenneTwister(42)
 
+"""
+	randpoly(R::Oscar.CRing,coeffs=0:9,max_exp=4,max_terms=8)
+> Return a random Polynomial from the Polynomial Ring `R` with coefficients in `coeffs`
+> with exponents between `0` and `max_exp` und between `0` and `max_terms` terms
+"""
 function randpoly(R::Oscar.CRing,coeffs=0:9,max_exp=4,max_terms=8)
 	n = nvars(R)
 	K = base_ring(R)
@@ -14,6 +19,10 @@ function randpoly(R::Oscar.CRing,coeffs=0:9,max_exp=4,max_terms=8)
 	return finish(M)
 end
 
+"""
+	array_to_matrix(A::Array,R::CRing = parent(A[1,1]))
+Return `A` as an AbstractAlgebra Matrix
+"""
 function array_to_matrix(A::Array,R::AbstractAlgebra.Ring = parent(A[1,1]))
 	Mat = AbstractAlgebra.MatrixSpace(R,size(A)...)
 	return Mat(R.(A))
@@ -27,9 +36,10 @@ end
   A2 = R[x^3 x^2*y;
         (2*x^2+x) (2*y^3+y)]
   B = R[4*x*y^3 (2*x+y)]
+  F2 = Oscar.FreeMod(R,2)
 
-  M1 = Oscar.SubQuo(A1, B)
-  M2 = Oscar.SubQuo(A2, B)
+  M1 = Oscar.SubQuo(F2, A1, B)
+  M2 = Oscar.SubQuo(F2, A2, B)
 
   A1 = R[x R(1); y x^2]
   A2 = R[x y]
@@ -37,11 +47,11 @@ end
   res = R[(x*y^2) (y^3-x*y+y^2); (-x*y) (-x^2*y^2+x*y^3-x^2*y+y^3-x*y)]
 
   @test M1 == intersect(M1, M1)[1]
-  @test Oscar.SubQuo(res, B1) == intersect(Oscar.SubQuo(A1, B1), Oscar.SubQuo(A2, B1))[1] #macaulay2
+  @test Oscar.SubQuo(F2, res, B1) == intersect(Oscar.SubQuo(F2, A1, B1), Oscar.SubQuo(F2, A2, B1))[1] #macaulay2
 
   A1 = R[x y; x^2 y^2]
   A2 = R[x+x^2 y+y^2]
-  @test Oscar.SubQuo(A2, B1) == intersect(Oscar.SubQuo(A1,B1), Oscar.SubQuo(A2,B1))[1]
+  @test Oscar.SubQuo(F2, A2, B1) == intersect(Oscar.SubQuo(F2, A1,B1), Oscar.SubQuo(F2, A2,B1))[1]
 end
 
 @testset "Test presentation" begin
@@ -54,10 +64,10 @@ end
 	for (A,B,true_pres_mat) in zip(generator_matrices, relation_matrices, true_pres_matrices)
     println(A,B,true_pres_mat)
 		SQ = Oscar.SubQuo(A,B)
-		pres_mat = Oscar.present(SQ).quo.matrix
+		pres_mat = matrix(Oscar.present_as_cokernel(SQ).quo)
 		@test Oscar.cokernel(pres_mat) == Oscar.cokernel(true_pres_mat)
 
-		pres_SQ, i = Oscar.present(SQ, :both)
+		pres_SQ, i = Oscar.present_as_cokernel(SQ, :both)
 		p = i.inverse_isomorphism
 		@test Oscar.iswelldefined(i)
 		@test Oscar.iswelldefined(p)
@@ -75,11 +85,12 @@ end
 	true_pres_matrices = [R[x^5*y-y^4 -x^5+x*y^3], R[-x^2*y-x*y-y x^2+x; -x^2*y^4+x^4*y x^2*y^3-x^4], R[-x*y R(1); -x^2*y^5+x*y^3 R(0)], R[-x^4+y^4-x^2-y^2 -x^10+x+R(1)], R[R(0) -x^2+y^2; -2*x^2 -x^9*y+x+1; -2*x*y^2 -x^8*y^3+y^2+x; -2*x*y^2+2*y^2 -x^8*y^3+x^7*y^3+y^2-1]]
 	for (A,B,true_pres_mat) in zip(generator_matrices, relation_matrices, true_pres_matrices)
 		SQ = Oscar.SubQuo(A,B)
-		pres_mat = Oscar.present(SQ).quo.matrix
-		@test Oscar.cokernel(pres_mat) == Oscar.cokernel(true_pres_mat)
+		pres_mat = matrix(Oscar.present_as_cokernel(SQ).quo)
+		F = Oscar.FreeMod(R,ncols(pres_mat))
+		@test Oscar.cokernel(F,pres_mat) == Oscar.cokernel(F,true_pres_mat)
 
-		pres_SQ, i= Oscar.present(SQ, :both)
-    p = i.inverse_isomorphism
+		pres_SQ, i = Oscar.present_as_cokernel(SQ, :both)
+    	p = i.inverse_isomorphism
 		@test Oscar.iswelldefined(i)
 		@test Oscar.iswelldefined(p)
 		@test Oscar.isbijective(i)
@@ -145,7 +156,7 @@ end
 	A1 = R[x*y R(0)]
 	B1 = R[R(0) R(1)]
 	M1 = Oscar.SubQuo(A1,B1)
-	M2,i2,p2 = Oscar.simplify_subquotient(M1)
+	M2,i2,p2 = Oscar.simplify(M1)
 	#display(M1)
 	#display(M2)
 	for k=1:5
@@ -165,7 +176,7 @@ end
 	A1 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:3,j=1:2])
 	B1 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:1,j=1:2])
 	M1 = Oscar.SubQuo(A1,B1)
-	M2,i2,p2 = Oscar.simplify_subquotient(M1)
+	M2,i2,p2 = Oscar.simplify(M1)
 	#display(M1)
 	#display(M2)
 	for k=1:5
@@ -186,10 +197,10 @@ end
 	A1 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:3,j=1:3])
 	B1 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:2,j=1:3])
 	M1 = Oscar.SubQuo(A1,B1)
-	M2,i2,p2 = Oscar.simplify_subquotient(M1)
+	M2,i2,p2 = Oscar.simplify(M1)
 	#display(M1)
 	#display(M2)
-	#println(p2.matrix)
+	#println(matrix(p2))
 
 	for k=1:5
 		#elem = M1(R[randpoly(R) for i=1:3])
@@ -207,7 +218,7 @@ end
 	#@test inv(i2) === p2 && inv(p2) === i2
 
 	M1 = Oscar.SubQuo(B1,A1)
-	M2,i2,p2 = Oscar.simplify_subquotient(M1)
+	M2,i2,p2 = Oscar.simplify(M1)
 	#display(M1)
 	#display(M2)
 	for k=1:5
@@ -229,31 +240,33 @@ end
 @testset "testing quotient modules" begin
   R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 
-  M1 = Oscar.SubQuo(R[x^2*y^3-x*y y^3 x^2*y; 2*x^2 3*y^2*x 4],R[x^4*y^5 x*y y^4])
-  N1 = Oscar.SubQuo(R[x^4*y^5-4*x^2 x*y-6*y^2*x y^4-8],R[x^4*y^5 x*y y^4])
+  F3 = Oscar.FreeMod(R,3)
+  M1 = Oscar.SubQuo(F3,R[x^2*y^3-x*y y^3 x^2*y; 2*x^2 3*y^2*x 4],R[x^4*y^5 x*y y^4])
+  N1 = Oscar.SubQuo(F3,R[x^4*y^5-4*x^2 x*y-6*y^2*x y^4-8],R[x^4*y^5 x*y y^4])
   Q1,p1 = quo(M1,N1,:store)
 
-  @test Q1 == Oscar.SubQuo(R[x^2*y^3-x*y y^3 x^2*y],R[x^4*y^5 x*y y^4; x^4*y^5-4*x^2  -6*x*y^2+x*y  y^4-8])
+  @test Q1 == Oscar.SubQuo(F3,R[x^2*y^3-x*y y^3 x^2*y],R[x^4*y^5 x*y y^4; x^4*y^5-4*x^2  -6*x*y^2+x*y  y^4-8])
   for k=1:5
     elem = Oscar.SubQuoElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1,i=1:2])), M1)  
     @test p1(elem) == Oscar.map_canonically(Q1, elem)
     #@test p1(elem) == Q1(elem)
   end
 
-  M2 = Oscar.SubQuo(R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],R[x^3-y^2 y^4-x-y])
+  F2 = Oscar.FreeMod(R,2)
+  M2 = Oscar.SubQuo(F2,R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],R[x^3-y^2 y^4-x-y])
   elems = [Oscar.SubQuoElem(Oscar.sparse_row(R[x*y -x*y^2 x*y]), M2), Oscar.SubQuoElem(Oscar.sparse_row(R[x R(0) R(-1)]), M2)]
   Q2,p2 = quo(M2,elems,:store)
 
-  @test Q2 == Oscar.SubQuo(R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],
+  @test Q2 == Oscar.SubQuo(F2,R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],
             R[x^3-y^2 y^4-x-y; x^2*y^3+x^2*y^2+x^3*y^3+x*y^3-x^5*y^2 x^4*y+2*x*y^2-x*y^5+x^2*y^2; x^2*y-y^2 x^4+x*y])
   for k=1:5
     elem = Oscar.SubQuoElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1,i=1:3])), M2)
     @test p2(elem) == Oscar.map_canonically(Q2, elem)
   end
 
-  M3 = Oscar.SubQuo(R[x^2*y+13*x*y+2x-1 x^4 2*x*y; y^4 3*x -1],R[y^2 x^3 y^2])
-  N3 = Oscar.SubQuo(R[x^2*y+13*x*y+2x-1-x*y^2 0 x^4-x*y^2; y^4-x*y^2 3*x-x^4 -1-x*y^2],R[2*y^2 2*x^3 2*y^2])
-  N3 = Oscar.SubQuo(R[x^2*y+13*x*y+2x-1-x*y^2 0 2*x*y-x*y^2; y^4-x*y^2 3*x-x^4 -1-x*y^2],R[2*y^2 2*x^3 2*y^2])
+  M3 = Oscar.SubQuo(F3,R[x^2*y+13*x*y+2x-1 x^4 2*x*y; y^4 3*x -1],R[y^2 x^3 y^2])
+  #N3 = Oscar.SubQuo(F3,R[x^2*y+13*x*y+2x-1-x*y^2 0 x^4-x*y^2; y^4-x*y^2 3*x-x^4 -1-x*y^2],R[2*y^2 2*x^3 2*y^2])
+  N3 = Oscar.SubQuo(F3,R[x^2*y+13*x*y+2x-1-x*y^2 0 2*x*y-x*y^2; y^4-x*y^2 3*x-x^4 -1-x*y^2],R[2*y^2 2*x^3 2*y^2])
   Q3,p3 = quo(M3,N3,:store)
 
   @test iszero(quo(M3,M3))
@@ -268,25 +281,26 @@ end
 @testset "testing submodules" begin
   R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 
-  M1 = Oscar.SubQuo(R[x^2*y+x*y x*y^2-x; x+x*y^2 y^3],R[x^2 y^3-x])
+  F2 = Oscar.FreeMod(R,2)
+  M1 = Oscar.SubQuo(F2,R[x^2*y+x*y x*y^2-x; x+x*y^2 y^3],R[x^2 y^3-x])
   S1,i1 = Oscar.sub(M1, [M1(Oscar.sparse_row(R[1 1])),M1(Oscar.sparse_row(R[y -x]))], :store)
 
-  @test S1 == Oscar.SubQuo(R[x*y^2+x^3-x^2 x*y^3-x*y-x^2; x^2*y+x*y^2+x*y-x^2+x x*y^2],R[x^2 y^3-x])
+  @test S1 == Oscar.SubQuo(F2,R[x*y^2+x^3-x^2 x*y^3-x*y-x^2; x^2*y+x*y^2+x*y-x^2+x x*y^2],R[x^2 y^3-x])
   for k=1:5
       elem = S1(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1,i=1:2])))
       @test i1(elem) == Oscar.map_canonically(M1, elem)
   end
 
-  M2 = Oscar.SubQuo(R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],R[x^3-y^2 y^4-x-y])
+  M2 = Oscar.SubQuo(F2,R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],R[x^3-y^2 y^4-x-y])
   S2,i2 = sub(M2,[M2(Oscar.sparse_row(R[x*y -x*y^2 x*y])),M2(Oscar.sparse_row(R[x 0 -1]))], :store)
 
-  @test S2 == Oscar.SubQuo(R[x^2*y^3+x^2*y^2+x^3*y^3+x*y^3-x^5*y^2 x^4*y+2*x*y^2-x*y^5+x^2*y^2; x^2*y-y^2 x^4+x*y],R[x^3-y^2 y^4-x-y])
+  @test S2 == Oscar.SubQuo(F2,R[x^2*y^3+x^2*y^2+x^3*y^3+x*y^3-x^5*y^2 x^4*y+2*x*y^2-x*y^5+x^2*y^2; x^2*y-y^2 x^4+x*y],R[x^3-y^2 y^4-x-y])
   for k=1:5
       elem = S2(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1,i=1:2])))
       @test i2(elem) == Oscar.map_canonically(M2, elem)
   end
 
-  M3 = Oscar.SubQuo(R[x*y^2 x^3+2*y; x^4 y^3; x*y+y^2 x*y],R[x^3-y^2 y^4-x-y])
+  M3 = Oscar.SubQuo(F2,R[x*y^2 x^3+2*y; x^4 y^3; x*y+y^2 x*y],R[x^3-y^2 y^4-x-y])
   elems = [M3(Oscar.sparse_row(R[0 6 0])),M3(Oscar.sparse_row(R[9 0 -x])),M3(Oscar.sparse_row(R[0 0 -42]))]
   S3,i3 = sub(M3,elems,:store)
 
@@ -308,7 +322,7 @@ end
 	#println("-------")
 	#display(SQ)
 	#println("--------")
-	#display(simplify_subquotient(SQ)[1])
+	#display(simplify(SQ)[1])
 	#println("--------")
 
 	f2 = R[0 0]
@@ -319,7 +333,7 @@ end
 	#println("-------")
 	#display(SQ)
 	#println("--------")
-	#display(simplify_subquotient(SQ)[1])
+	#display(simplify(SQ)[1])
 	#println("--------")
 
 	function free_module_SQ(ring,n)
@@ -328,14 +342,18 @@ end
 		return Oscar.SubQuo(A,B)
 	end
 
+	function free_module_SQ(F::Oscar.FreeMod)
+		return Oscar.SubQuo(F,gens(F))
+	end
+
 	# test if Hom(R^n,R^m) gives R^(m*n): (there is a dedicated function for free modules but this is a simple test for the function for subquos)
 	for n=1:5
 		for m=1:5
 			M=free_module_SQ(R,n)
 			N=free_module_SQ(R,m)
 			#SQ = Oscar.hom(M,N)[1] # it's weird that it fails without simplifying
-			SQ = Oscar.simplify_subquotient(Oscar.hom(M,N)[1])[1]
-			@test SQ==free_module_SQ(R,n*m)
+			SQ = Oscar.simplify(Oscar.hom(M,N)[1])[1]
+			@test SQ == free_module_SQ(Oscar.free_module(SQ))
 		end
 	end
 	R, (x,y) = PolynomialRing(QQ, ["x", "y"])
@@ -379,11 +397,61 @@ end
 	end
 end
 
+@testset "tensoring morphisms" begin
+	R, (x,y,z) = PolynomialRing(QQ, ["x", "y", "z"])
+
+	F2 = Oscar.FreeMod(R,2)
+	F3 = Oscar.FreeMod(R,3)
+	F4 = Oscar.FreeMod(R,4)
+
+	for _=1:10
+		A1 = array_to_matrix([randpoly(R,0:15,4,3) for i=1:3,j=1:2])
+		B1 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:1,j=1:2])
+
+		
+		A2 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:3,j=1:3])
+		B2 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:1,j=1:3])
+
+		M1 = Oscar.SubQuo(F2,A1,B1)
+		M2 = Oscar.SubQuo(F3,A2,B2)
+
+		M,pure_M = Oscar.tensor_product(M1,M2, task=:map)
+		phi = Oscar.hom_tensor(M,M,[Oscar.identity_map(M1),Oscar.identity_map(M2)])
+
+		for _=1:3
+			v = Oscar.SubQuoElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1, i=1:ngens(M)])), M)
+			@test phi(v) == v
+		end
+
+		A3 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:2,j=1:2])
+		#B3 = array_to_matrix([randpoly(R,0:15,2,1) for i=1:1,j=1:2])
+		M3 = Oscar.SubQuo(Oscar.SubModuleOfFreeModule(F2,A3))
+
+		N,pure_N = Oscar.tensor_product(M3,F4, task=:map)
+
+		M3_to_M1 = Oscar.SubQuoHom(M3,M1, array_to_matrix([randpoly(R,0:2,2,2) for i=1:ngens(M3), j=1:ngens(M1)]))
+		@assert Oscar.iswelldefined(M3_to_M1)
+		F4_to_M2 = Oscar.FreeModuleHom(F4,M2, array_to_matrix([randpoly(R,0:2,2,2) for i=1:ngens(F4), j=1:ngens(M2)]))
+
+		phi = Oscar.hom_tensor(N,M,[M3_to_M1,F4_to_M2])
+		u1 = Oscar.SubQuoElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1, i=1:ngens(M3)])), M3)
+		u2 = Oscar.FreeModuleElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1, i=1:ngens(F4)])), F4)
+		@test phi(pure_N((u1,u2))) == pure_M((M3_to_M1(u1),F4_to_M2(u2)))
+	end
+end
+
 # testing lift ?
 
 @testset "homomorphism testing" begin
 	# This test doesn't terminate due to a bug in syz
 	R, (x,y) = PolynomialRing(QQ, ["x", "y"])
+
+	F3 = Oscar.FreeMod(R,3)
+	F4 = Oscar.FreeMod(R,4)
+	phi = Oscar.hom(F3,F4, [F4[1],F4[3]+x*F4[4],(x+y)*F4[4]] )
+	@test iszero(Oscar.preimage(phi,Oscar.zero(F4)))
+	@test phi(Oscar.preimage(phi,y*(F4[3]+x*F4[4]+(x+y)*F4[3]))) == y*(F4[3]+x*F4[4]+(x+y)*F4[3])
+
 	k_max = 10
 	for k=1:k_max
 		print("\rhomomorphism testing: test ",k," out of ",k_max,"     ")
@@ -395,7 +463,7 @@ end
 
 		#1) H: N --> M where N is a cokernel, H should be an isomorphism
 		M = Oscar.SubQuo(A1,B1)
-		N, H = Oscar.present(M, :store)
+		N, H = Oscar.present_as_cokernel(M, :store)
 		Hinv = H.inverse_isomorphism
 		@test Oscar.iswelldefined(H)
 
@@ -404,8 +472,8 @@ end
 		ImH,iImH = Oscar.image(H)
 
 		NmodKerH, pNmodKerH = quo(N,KerH, :store)
-		Hbar = Oscar.SubQuoHom(NmodKerH,M,H.matrix)
-		#Hbar = AbstractAlgebra.Generic.ModuleHomomorphism(NmodKerH,M,H.matrix) # induced map N/KerH --> M
+		Hbar = Oscar.SubQuoHom(NmodKerH,M,matrix(H))
+		#Hbar = AbstractAlgebra.Generic.ModuleHomomorphism(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 		Hbar = Oscar.restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
 		@test Oscar.iswelldefined(Hbar)
@@ -440,8 +508,8 @@ end
 		ImH,iImH = Oscar.image(H)
 
 		NmodKerH, pNmodKerH = Oscar.quo(N,KerH, :store)
-		Hbar = Oscar.SubQuoHom(NmodKerH,M,H.matrix) # induced map N/KerH --> M
-		#Hbar = AbstractAlgebra.Generic.ModuleHomomorphism(NmodKerH,M,H.matrix) # induced map N/KerH --> M
+		Hbar = Oscar.SubQuoHom(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
+		#Hbar = AbstractAlgebra.Generic.ModuleHomomorphism(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 		Hbar = Oscar.restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
 		@test Oscar.iswelldefined(Hbar)
@@ -479,7 +547,7 @@ end
 		ImH,iImH = Oscar.image(H)
 
 		NmodKerH, pNmodKerH = Oscar.quo(N,KerH, :store)
-		Hbar = Oscar.SubQuoHom(NmodKerH,M,H.matrix) # induced map N/KerH --> M
+		Hbar = Oscar.SubQuoHom(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 		Hbar = Oscar.restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
 		@test Oscar.iswelldefined(Hbar)
@@ -511,8 +579,8 @@ end
 		ImH,iImH = Oscar.image(H)
 
 		NmodKerH, pNmodKerH = Oscar.quo(N,KerH, :store)
-		Hbar = Oscar.SubQuoHom(NmodKerH,M,H.matrix) # induced map N/KerH --> M
-		#Hbar = AbstractAlgebra.Generic.ModuleHomomorphism(NmodKerH,M,H.matrix) # induced map N/KerH --> M
+		Hbar = Oscar.SubQuoHom(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
+		#Hbar = AbstractAlgebra.Generic.ModuleHomomorphism(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 		Hbar = Oscar.restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
 		@test Oscar.iswelldefined(Hbar)

@@ -20,6 +20,16 @@
   @test xx^0 == one(Q)
 end
 
+@testset "MpolyQuo.manipulation" begin
+  R, (x, y) = PolynomialRing(QQ, ["x", "y"])
+  A, _ = quo(R, 2*x^2-5*y^3)
+  (x, y) = (A(x), A(y))
+
+  @test iszero(x-x)
+  @test x*deepcopy(x) == x^2
+  @test iszero(det(matrix(A, [x 5; y^3 2*x])))
+end
+
 @testset "MPolyQuo.ideals" begin
   R, (x, y, z) = PolynomialRing(QQ, ["x", "y", "z"])
   Q, _ = quo(R, ideal(R, [x*y, x*z]))
@@ -45,4 +55,14 @@ end
   b = a*ideal(Q, [z])
   @test b == ideal(Q, [z*x])
   @test b == ideal(Q, gens(b))
+
+  I = ideal(Q, [x^2*y-x+y,y+1])
+  simplify!(I)
+  @test I.SI[1] == singular_ring(Q)(-x+y) && I.SI[2] == singular_ring(Q)(y+1)
+  J = ideal(Q, [x+y+1,y+1])
+  @test issubset(J, I) == true
+  @test issubset(I, J) == false
+  @test (I == J) == false
+  @test dim(J)  == 1
+  @test dim(J)  == J.dim  # test case if dim(J) is already set
 end
