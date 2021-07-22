@@ -1,6 +1,6 @@
 export weight, decorate, ishomogeneous, homogeneous_components, filtrate,
 grade, GradedPolynomialRing, homogeneous_component, jacobi_matrix, jacobi_ideal,
-HilbertData, hilbert_series, hilbert_series_reduced, hilbert_series_expanded, hilbert_function, hilbert_polynomial,
+HilbertData, hilbert_series, hilbert_series_reduced, hilbert_series_expanded, hilbert_function, hilbert_polynomial, grading,
 homogenization, dehomogenization
 export MPolyRing_dec, MPolyElem_dec
 mutable struct MPolyRing_dec{T, S} <: AbstractAlgebra.MPolyRing{T}
@@ -25,6 +25,8 @@ mutable struct MPolyRing_dec{T, S} <: AbstractAlgebra.MPolyRing{T}
     return r
   end
 end
+
+grading_group(W::MPolyRing_dec) = W.D
 
 isgraded(W::MPolyRing_dec) = !isdefined(W, :lt)
 isfiltered(W::MPolyRing_dec) = isdefined(W, :lt)
@@ -70,15 +72,21 @@ Grade `R` by assigning weight 1 to each variable.
 julia> R, (x, y, z) = PolynomialRing(QQ, ["x", "y", "z"])
 (Multivariate Polynomial Ring in x, y, z over Rational Field, fmpq_mpoly[x, y, z])
 
-julia> T, (x, y, z) = grade(R)
+julia> typeof(R)
+FmpqMPolyRing
+
+julia> S, (x, y, z) = grade(R)
 (Multivariate Polynomial Ring in x, y, z over Rational Field graded by 
   x -> [1]
   y -> [1]
   z -> [1], MPolyElem_dec{fmpq,fmpq_mpoly}[x, y, z])
 
+julia> typeof(S)
+MPolyRing_dec{fmpq,FmpqMPolyRing}
+
 julia> W = [1, 2, 3];
 
-julia> S, (x, y, z) = grade(R, W)
+julia> T, (x, y, z) = grade(R, W)
 (Multivariate Polynomial Ring in x, y, z over Rational Field graded by 
   x -> [1]
   y -> [2]
@@ -182,7 +190,16 @@ parent_type(::Type{MPolyElem_dec{T, S}}) where {T, S} = MPolyRing_dec{T, parent_
 (W::MPolyRing_dec)(i::Int) = MPolyElem_dec(W.R(i), W)
 (W::MPolyRing_dec)(i::RingElem) = MPolyElem_dec(W.R(i), W)
 (W::MPolyRing_dec)(f::Singular.spoly) = MPolyElem_dec(W.R(f), W)
-(W::MPolyRing_dec)(f::MPolyElem) = MPolyElem_dec(f, W)
+
+function (W::MPolyRing_dec)(f::MPolyElem)
+  @assert W.R === parent(f)
+  return MPolyElem_dec(f, W)
+end
+
+function (W::MPolyRing_dec)(a)
+  return W(W.R(a))
+end
+
 (W::MPolyRing_dec)(g::MPolyElem_dec) = MPolyElem_dec(g.f, W)
 one(W::MPolyRing_dec) = MPolyElem_dec(one(W.R), W)
 zero(W::MPolyRing_dec) = MPolyElem_dec(zero(W.R), W)
@@ -220,22 +237,30 @@ divexact(a::MPolyElem_dec, b::Rational) = MPolyElem_dec(divexact(a.f, b), parent
 
 for T in [:(-), :(+)]
   @eval ($T)(a::MPolyElem_dec,
-             b::RingElem) = MPolyElem_dec($(T)(a.poly, b), parent(a))
+             b::RingElem) = MPolyElem_dec($(T)(a.f, b), parent(a))
 
   @eval ($T)(a::MPolyElem_dec,
-             b::Integer) = MPolyElem_dec($(T)(a.poly, b), parent(a))
+             b::Integer) = MPolyElem_dec($(T)(a.f, b), parent(a))
 
   @eval ($T)(a::MPolyElem_dec,
-             b::Rational) = MPolyElem_dec($(T)(a.poly, b), parent(a))
+             b::Rational) = MPolyElem_dec($(T)(a.f, b), parent(a))
 
   @eval ($T)(a::RingElem,
-             b::MPolyElem_dec) = MPolyElem_dec($(T)(a, b.poly), b.parent)
+             b::MPolyElem_dec) = MPolyElem_dec($(T)(a, b.f), b.parent)
 
   @eval ($T)(a::Integer,
-             b::MPolyElem_dec) = MPolyElem_dec($(T)(a, b.poly), b.parent)
+             b::MPolyElem_dec) = MPolyElem_dec($(T)(a, b.f), b.parent)
 
   @eval ($T)(a::Rational,
-             b::MPolyElem_dec) = MPolyElem_dec($(T)(a, b.poly), b.parent)
+             b::MPolyElem_dec) = MPolyElem_dec($(T)(a, b.f), b.parent)
+end
+
+function *(a::MPolyElem_dec{T, S}, b::T) where {T <: RingElem, S}
+  return MPolyElem_dec(a.f * b, parent(a))
+end
+
+function *(a::T, b::MPolyElem_dec{T, S}) where {T <: RingElem, S}
+  return b * a
 end
 
 ################################################################################
@@ -338,11 +363,12 @@ end
 function jacobi_matrix(g::Array{<:MPolyElem_dec, 1})
   R = parent(g[1])
   n = nvars(R)
-  @assert all(x->parent(x) == R, g)
+  @assert all(x->parent(x) === R, g)
   return matrix(R, n, length(g), [derivative(x, i) for i=1:n for x = g])
 end
 
 function degree(a::MPolyElem_dec)
+  @req !iszero(a) "Element must be non-zero"
   W = parent(a)
   w = W.D[0]
   first = true
@@ -445,8 +471,6 @@ Nemo.gen(W::MPolyRing_dec, i::Int) = W(gen(W.R, i))
 Base.getindex(W::MPolyRing_dec, i::Int) = W(W.R[i])
 
 base_ring(f::MPolyElem_dec) = base_ring(f.f)
-
-*(r::fmpq, w::MPolyElem_dec) = parent(w)(r*w.f)
 
 function show_homo_comp(io::IO, M)
   (W, d) = Hecke.get_special(M, :data)
@@ -790,3 +814,11 @@ end
 function dehomogenization(I::MPolyIdeal{T}, pos::Int) where {T <: MPolyElem_dec}
   return ideal(dehomogenization(gens(I), pos))
 end
+
+################################################################################
+#
+#  Evaluation
+#
+################################################################################
+
+(f::MPolyElem_dec)(x...) = evaluate(f, collect(x))

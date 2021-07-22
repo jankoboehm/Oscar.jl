@@ -1,3 +1,10 @@
+@testset "MPolyQuo.graded" begin
+  R, (x, y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
+  Q = quo(R, ideal([x^2, y]))[1];
+  h = homogeneous_components(Q[1])
+  @test valtype(h) === elem_type(Q)
+end
+
 function _random_poly(RR, n)
   pols = elem_type(RR)[]
   for t in 1:n
@@ -25,7 +32,7 @@ function _homogeneous_polys(polys::Vector{<:MPolyElem})
     _monomials = append!(_monomials, monomials(polys[i]))
   end
   hom_polys = []
-  for deg in unique([degree(mon) for mon = _monomials])
+  for deg in unique([iszero(mon) ? id(grading_group(R)) : degree(mon) for mon = _monomials])
     g = zero(R)
     for i = 1:4
       if haskey(D[i], deg)
@@ -48,6 +55,7 @@ end
     NFx = PolynomialRing(k1, ["x", "y", "z"])[1]
     k2 = Nemo.GF(23)
     GFx = PolynomialRing(k2, ["x", "y", "z"])[1]
+    # TODO explain why test fails if Nemo.ResidueRing(ZZ,17) => Nemo.GF(17)
     RNmodx=PolynomialRing(Nemo.ResidueRing(ZZ,17), :x => 1:2)[1]
     Rings= [Qx, NFx, GFx, RNmodx]
 
@@ -125,13 +133,13 @@ end
         for deg in [degree(R_quo(mon)) for mon  = Oscar.monomials(f.f)]
           h = get(D, deg, 'x')
           @test ishomogeneous(R_quo(h))
-          @test h == homogeneous_component(f, deg)
+          @test h == R_quo(homogeneous_component(f, deg))
         end
 
         @test Oscar.isfiltered(R_quo) == Oscar.isfiltered(RR)
         @test Oscar.isgraded(R_quo) == Oscar.isgraded(RR)
 
-        @test decoration(R_quo) == decoration(RR)
+        @test grading_group(R_quo) == grading_group(RR)
 
         d_Elem = d_Elems[RR]
 
@@ -155,4 +163,32 @@ end
         #end
     end
   end
+end
+
+@testset "Coercion" begin
+  R, (x, y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
+  Q = quo(R, ideal([x^2, y]))[1];
+  @test parent(Q(x)) === Q
+  @test parent(Q(gens(R.R)[1])) === Q
+end
+
+@testset "Evaluation" begin
+  R, (x,y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
+  @test x(y, x) == y
+end
+
+@testset "Promotion" begin
+  R, (x,y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
+  @test x + QQ(1//2) == x + 1//2
+end
+
+@testset "Degree" begin
+  R, (x,y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
+  @test_throws ArgumentError degree(zero(R))
+end
+
+@testset "Grading" begin
+  R, (x,y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
+  D = grading_group(R)
+  @test isisomorphic(D, abelian_group([0]))
 end

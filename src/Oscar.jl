@@ -42,6 +42,8 @@ export Nemo, Hecke, Singular, Polymake, AbstractAlgebra, GAP
 import AbstractAlgebra: @show_name, @show_special, elem_type, force_coerce, force_op,
                         parent_type, expressify, canonical_unit
 
+import Hecke: @req
+
 # More helpful error message for users on Windows.
 windows_error() = error("""
 
@@ -90,6 +92,8 @@ end
 # pkgdir was added in Julia 1.4
 if VERSION < v"1.4"
    pkgdir(m::Core.Module) = abspath(Base.pathof(Base.moduleroot(m)), "..", "..")
+else
+   import Base.pkgdir
 end
 pkgproject(m::Core.Module) = Pkg.Operations.read_project(Pkg.Types.projectfile_path(pkgdir(m)))
 pkgversion(m::Core.Module) = pkgproject(m).version
@@ -111,6 +115,9 @@ const is_dev = (function(m)
 const IJuliaMime = Union{MIME"text/latex", MIME"text/html"}
 
 const oscardir = pkgdir(Oscar)
+const aadir = pkgdir(AbstractAlgebra)
+const nemodir = pkgdir(Nemo)
+const heckedir = pkgdir(Hecke)
 
 
 function example(s::String)
@@ -120,7 +127,7 @@ end
 function doc_init()
   Pkg.activate(joinpath(oscardir, "docs")) do
     Pkg.instantiate()
-    Base.include(Main, joinpath(oscardir, "docs", "make_local.jl"))
+    Base.include(Main, joinpath(oscardir, "docs", "make_work.jl"))
   end
 end
 
@@ -128,14 +135,29 @@ function doc_update_deps()
   Pkg.activate(Pkg.update, joinpath(oscardir, "docs"))
 end
 
+function open_doc()
+    filename = normpath(Oscar.oscardir, "docs", "build", "index.html")
+    @static if Sys.isapple()
+        run(`open $(filename)`; wait = false)
+    elseif Sys.islinux() || Sys.isbsd()
+        run(`xdg-open $(filename)`; wait = false)
+    elseif Sys.iswindows()
+        cmd = get(ENV, "COMSPEC", "cmd.exe")
+        run(`$(cmd) /c start $(filename)`; wait = false)
+    else
+        @warn("Opening files the default application is not supported on this OS.",
+              KERNEL = Sys.KERNEL)
+    end
+end
+
 function build_doc()
   if !isdefined(Main, :BuildDoc)
     doc_init()
   end
   Pkg.activate(joinpath(oscardir, "docs")) do
-    Base.invokelatest(Main.BuildDoc.doit, false, true)
+    Base.invokelatest(Main.BuildDoc.doit, Oscar, false, true)
   end
-  Base.invokelatest(Main.BuildDoc.open_doc)
+  open_doc()
 end
 
 export build_doc
@@ -202,6 +224,8 @@ include("OscarTypes.jl")
 include("Groups/types.jl")
 
 include("Rings/Hecke.jl") #does all the importing from Hecke - to define names
+
+include("printing.jl")
 
 include("GAP/gap_to_oscar.jl")
 include("GAP/oscar_to_gap.jl")
