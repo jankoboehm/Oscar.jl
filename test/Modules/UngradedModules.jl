@@ -28,7 +28,7 @@ function array_to_matrix(A::Array,R::AbstractAlgebra.Ring = parent(A[1,1]))
 	return Mat(R.(A))
 end
 
-@testset "Test intersection" begin
+@testset "Intersection of modules" begin
   R, (x, y, z) = PolynomialRing(QQ, ["x", "y", "z"])
 
   A1 = R[x y;
@@ -54,7 +54,7 @@ end
   @test Oscar.SubQuo(F2, A2, B1) == intersect(Oscar.SubQuo(F2, A1,B1), Oscar.SubQuo(F2, A2,B1))[1]
 end
 
-@testset "Test presentation" begin
+@testset "Presentation" begin
 
 	# over Integers
 	#=R, (x,y,z) = PolynomialRing(ZZ, ["x", "y", "z"])
@@ -138,7 +138,7 @@ end
 	end
 end=#
 
-@testset "Test iszero(SubQuo)" begin
+@testset "iszero(SubQuo)" begin
 	R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 	A = R[x^2+2*x*y y^2*x-2*x^2*y;-y x*y]
 	B = R[x^2 y^2*x;-y x*y]
@@ -151,7 +151,7 @@ end=#
 	end
 end
 
-@testset "Test simplify" begin
+@testset "simplify subquotient" begin
 	R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 	A1 = R[x*y R(0)]
 	B1 = R[R(0) R(1)]
@@ -237,7 +237,7 @@ end
 	#@test inv(i2) === p2 && inv(p2) === i2
 end
 
-@testset "testing quotient modules" begin
+@testset "quotient modules" begin
   R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 
   F3 = Oscar.FreeMod(R,3)
@@ -278,7 +278,7 @@ end
   end
 end
 
-@testset "testing submodules" begin
+@testset "submodules" begin
   R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 
   F2 = Oscar.FreeMod(R,2)
@@ -311,7 +311,7 @@ end
   end
 end
 
-@testset "testing Hom" begin
+@testset "Hom module" begin
 	R, (x0,x1,x2,x3,x4,x5) = PolynomialRing(QQ, ["x0", "x1", "x2", "x3", "x4", "x5"])
 	f1=R[-x2*x3 -x4*x5 0; x0*x1 0 -x4*x5; 0 x0*x1 -x2*x3]'
 	g1=R[x0*x1 x2*x3 x4*x5]'
@@ -397,7 +397,7 @@ end
 	end
 end
 
-@testset "tensoring morphisms" begin
+#=@testset "tensoring morphisms" begin
 	R, (x,y,z) = PolynomialRing(QQ, ["x", "y", "z"])
 
 	F2 = Oscar.FreeMod(R,2)
@@ -435,7 +435,7 @@ end
 
 		phi = Oscar.hom_tensor(N,M,[M3_to_M1,F4_to_M2])
 		u1 = Oscar.SubQuoElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1, i=1:ngens(M3)])), M3)
-		u2 = Oscar.FreeModuleElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1, i=1:ngens(F4)])), F4)
+		u2 = Oscar.FreeModElem(Oscar.sparse_row(array_to_matrix([randpoly(R) for _=1:1, i=1:ngens(F4)])), F4)
 		@test phi(pure_N((u1,u2))) == pure_M((M3_to_M1(u1),F4_to_M2(u2)))
 	end
 end
@@ -511,11 +511,11 @@ end
 			@test M2_to_N2(g) == Oscar.canonical_projection(prod_N,2)(phi(emb[2](g)))
 		end
 	end
-end
+end=#
 
 # testing lift ?
 
-@testset "homomorphism testing" begin
+@testset "module homomorphisms" begin
 	# This test doesn't terminate due to a bug in syz
 	R, (x,y) = PolynomialRing(QQ, ["x", "y"])
 
@@ -602,7 +602,7 @@ end
 		# test, if H is surjective:
 		@test ImH == M
 
-
+#=
 		#3) H:N --> M neither injective nor surjective, also: tests 'restrict_domain()'
 		MM = Oscar.SubQuo(A1,B1)
 		M, iM, iSQ = Oscar.sum(MM, Oscar.SubQuo(A2,B1))
@@ -667,7 +667,7 @@ end
 
 		# test if Hbar and Hbar_inv are inverse to each other:
 		@test all([Hbar_inv(Hbar(g))==g for g in Oscar.gens(NmodKerH)])
-		@test all([Hbar(Hbar_inv(g))==g for g in Oscar.gens(ImH)])
+		@test all([Hbar(Hbar_inv(g))==g for g in Oscar.gens(ImH)])=#
 		#######################################################################
 	end
 	print("\r                                        ")

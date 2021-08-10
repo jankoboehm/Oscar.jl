@@ -21,14 +21,14 @@ export sum_Point_EllCurveZnZ,
 # Adapted from the corresponding code in Hecke.
 
 function _add(
-    P::Array{Nemo.fmpz_mod,1},
-    Q::Array{Nemo.fmpz_mod,1},
-    E::Array{Nemo.fmpz_mod,1},
+    P::Vector{Nemo.fmpz_mod},
+    Q::Vector{Nemo.fmpz_mod},
+    E::Vector{Nemo.fmpz_mod},
 )
     length(P) == 3 && length(Q) == 3 || error("arrays of size 3 required")
     length(E) == 2 || error("array of size 2 required")
     A = parent(P[1])
-    all(x -> parent(x) == A, [P...,Q...,E...]) || error("Not the same parent")
+    all(x -> parent(x) == A, [P..., Q..., E...]) || error("Not the same parent")
     P[3] != A(1) &&
         P != [A(0), A(1), A(0)] &&
         error("require infinity point or last coordinate 1")
@@ -92,8 +92,8 @@ end
 # and the coordinates of a point on it.
 
 function _rand_list(A::Nemo.FmpzModRing, N::Int)
-    E = Array{Nemo.fmpz_mod,1}[]
-    P = Array{Nemo.fmpz_mod,1}[]
+    E = Vector{Nemo.fmpz_mod}[]
+    P = Vector{Nemo.fmpz_mod}[]
     for i = 1:N
         L = _rand_point_curve(A)
         E = push!(E, L[2])
@@ -106,7 +106,7 @@ end
 # Returns the coordinates of m*P and ZZ(1) when the computation is possible, and
 # returns (0, 0, 0) and the gcd otherwise.
 
-function _scalar_mult(P::Array{Nemo.fmpz_mod,1}, E::Array{Nemo.fmpz_mod,1}, m::fmpz)
+function _scalar_mult(P::Vector{Nemo.fmpz_mod}, E::Vector{Nemo.fmpz_mod}, m::fmpz)
     length(P) == 3 || error("arrays of size 3 required")
     length(E) == 2 || error("array of size 2 required")
     A = parent(P[1])
@@ -136,7 +136,7 @@ end
 ################################################################################
 # Returns the elliptic plane curve corresponding to the array.
 
-function _toProjEllipticCurve(R::MPolyRing{S}, E::Array{S,1}) where {S<:Nemo.fmpz_mod}
+function _toProjEllipticCurve(R::MPolyRing{S}, E::Vector{S}) where {S<:Nemo.fmpz_mod}
     length(E) == 2 || error("array of size 2 required")
     x = gen(R, 1)
     y = gen(R, 2)
@@ -171,12 +171,44 @@ end
     sum_Point_EllCurveZnZ(P::Point_EllCurve{S}, Q::Point_EllCurve{S}) where S <: Nemo.fmpz_mod
 
 Return, if possible, the sum of the points `P` and `Q`, and an error otherwise.
+# Example
+```jldoctest
+julia> A = ResidueRing(ZZ, ZZ(4453))
+Integers modulo 4453
+
+julia> S, (x, y, z) = PolynomialRing(A, ["x", "y", "z"])
+(Multivariate Polynomial Ring in x, y, z over Integers modulo 4453, AbstractAlgebra.Generic.MPoly{fmpz_mod}[x, y, z])
+
+julia> T, _ = grade(S)
+(Multivariate Polynomial Ring in x, y, z over Integers modulo 4453 graded by
+  x -> [1]
+  y -> [1]
+  z -> [1], MPolyElem_dec{fmpz_mod, AbstractAlgebra.Generic.MPoly{fmpz_mod}}[x, y, z])
+
+julia> F = T(y^2*z - x^3 - 10*x*z^2 + 2*z^3)
+4452*x^3 + 4443*x*z^2 + y^2*z + 2*z^3
+
+julia> E = Oscar.ProjEllipticCurve(F)
+Projective elliptic curve defined by 4452*x^3 + 4443*x*z^2 + y^2*z + 2*z^3
+
+
+julia> PP = projective_space(A, 2)
+(Projective space of dim 2 over Integers modulo 4453
+, MPolyElem_dec{fmpz_mod, AbstractAlgebra.Generic.MPoly{fmpz_mod}}[x[0], x[1], x[2]])
+
+julia> P = Oscar.Point_EllCurve(E, Oscar.Geometry.ProjSpcElem(PP[1], [A(1), A(3), A(1)]))
+(1 : 3 : 1)
+
+
+julia> Oscar.sum_Point_EllCurveZnZ(P, P)
+(4332 : 3230 : 1)
+```
 """
 function sum_Point_EllCurveZnZ(
     P::Point_EllCurve{S},
     Q::Point_EllCurve{S},
 ) where {S<:Nemo.fmpz_mod}
-    A = parent(P.Pt[1])
+    A = P.Pt[1].parent
     E = P.C
     E.Hecke_ec.short || error("requires short Weierstrass form")
     Q = _add(P.Pt.v, Q.Pt.v, E.Hecke_ec.coeff)
@@ -193,6 +225,38 @@ end
     IntMult_Point_EllCurveZnZ(m::fmpz, P::Point_EllCurve{S}) where S <: Nemo.fmpz_mod
 
 Return, if possible, the point `mP`, and an error otherwise.
+# Example
+```jldoctest
+julia> A = ResidueRing(ZZ, ZZ(4453))
+Integers modulo 4453
+
+julia> S, (x, y, z) = PolynomialRing(A, ["x", "y", "z"])
+(Multivariate Polynomial Ring in x, y, z over Integers modulo 4453, AbstractAlgebra.Generic.MPoly{fmpz_mod}[x, y, z])
+
+julia> T, _ = grade(S)
+(Multivariate Polynomial Ring in x, y, z over Integers modulo 4453 graded by
+  x -> [1]
+  y -> [1]
+  z -> [1], MPolyElem_dec{fmpz_mod, AbstractAlgebra.Generic.MPoly{fmpz_mod}}[x, y, z])
+
+julia> F = T(y^2*z - x^3 - 10*x*z^2 + 2*z^3)
+4452*x^3 + 4443*x*z^2 + y^2*z + 2*z^3
+
+julia> E = Oscar.ProjEllipticCurve(F)
+Projective elliptic curve defined by 4452*x^3 + 4443*x*z^2 + y^2*z + 2*z^3
+
+
+julia> PP = projective_space(A, 2)
+(Projective space of dim 2 over Integers modulo 4453
+, MPolyElem_dec{fmpz_mod, AbstractAlgebra.Generic.MPoly{fmpz_mod}}[x[0], x[1], x[2]])
+
+julia> P = Oscar.Point_EllCurve(E, Oscar.Geometry.ProjSpcElem(PP[1], [A(1), A(3), A(1)]))
+(1 : 3 : 1)
+
+
+julia> Oscar.IntMult_Point_EllCurveZnZ(ZZ(2), P)
+(4332 : 3230 : 1)
+```
 """
 function IntMult_Point_EllCurveZnZ(m::fmpz, P::Point_EllCurve{S}) where {S<:Nemo.fmpz_mod}
     E = P.C
@@ -208,7 +272,7 @@ end
 
 ################################################################################
 @doc Markdown.doc"""
-    rand_pair_ellcurve_point(R::Oscar.MPolyRing_dec{S}, PP::Oscar.Geometry.ProjSpc{S}) where S <: Nemo.fmpz_mod
+    rand_pair_EllCurve_Point(R::Oscar.MPolyRing_dec{S}, PP::Oscar.Geometry.ProjSpc{S}) where S <: Nemo.fmpz_mod
 
 Return a pair composed of an elliptic plane curve `E` with equation in `R`,
 and a point `P` on `E`.
@@ -397,7 +461,8 @@ end
 @doc Markdown.doc"""
     Pollard_rho(N::fmpz, bound::Int = 50000)
 
-The algorithm computes a factor of `N` and returns it.
+The algorithm computes a factor of `N` using the Pollard rho algorithm
+and returns it.
 """
 function Pollard_rho(N::fmpz, bound::Int = 50000)
     R = ResidueRing(ZZ, N)
@@ -626,7 +691,7 @@ function atkin_morain_step(
     O_E = R.([0, 1, 0])
     g = quadratic_non_residue(N, D)
 
-    for k in 0: (h - 1)
+    for k = 0:(h-1)
         P1 = (O_E, ZZ(1))
         while P1[1] == O_E
             (bool2, P1, P2) = compute_p1p2(v, m, q)
