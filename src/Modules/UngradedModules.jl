@@ -6,7 +6,8 @@ export FreeMod, presentation, FreeModElem, coords, coeffs, repres,
       restrict_codomain, restrict_domain, direct_product, tensor_product, 
       free_module, tor, lift_homomorphism_contravariant, lift_homomorphism_covariant, 
       ext, map_canonically, all_canonical_maps, register_morphism!, dense_row, 
-      matrix_kernel, simplify, matrix_to_map, isinjective, issurjective, isbijective, iswelldefined
+      matrix_kernel, simplify, matrix_to_map, isinjective, issurjective, isbijective, iswelldefined,
+      ModuleFP, AbstractFreeMod, AbstractSubQuo, AbstractFreeModElem, AbstractSubQuoElem, ModuleMap
 
 # TODO replace asserts by error messages?
 
@@ -17,6 +18,12 @@ The abstract supertype of all modules. Here, all modules are finitely presented.
 The type variable `T` refers to the type of the elements of the base ring.
 """
 abstract type ModuleFP{T} end
+
+abstract type AbstractFreeMod{T} <: ModuleFP{T} end
+abstract type AbstractSubQuo{T} <: ModuleFP{T} end
+
+abstract type AbstractFreeModElem{T} end
+abstract type AbstractSubQuoElem{T} end
 
 #TODO: "fix" to allow QuoElem s as well...
 # this requires
@@ -46,7 +53,7 @@ Moreover, canonical incoming and outgoing morphisms are stored if the correspond
 option is set in suitable functions.
 `FreeMod{T}` is a subtype of `ModuleFP{T}`.
 """
-mutable struct FreeMod{T <: RingElem} <: ModuleFP{T}
+mutable struct FreeMod{T <: RingElem} <: AbstractFreeMod{T}
   R::Ring
   n::Int
   S::Vector{Symbol}
@@ -114,15 +121,15 @@ function show(io::IO, F::FreeMod)
 end
 
 @doc Markdown.doc"""
-    rank(F::FreeMod)
-    ngens(F::FreeMod)
-    dim(F::FreeMod)
+    rank(F::AbstractFreeMod)
+    ngens(F::AbstractFreeMod)
+    dim(F::AbstractFreeMod)
 
 Return the rank of `F`.
 """
-dim(F::FreeMod) = F.n
-rank(F::FreeMod) = F.n
-ngens(F::FreeMod) = dim(F)
+dim(F::AbstractFreeMod) = rank(F)
+rank(F::AbstractFreeMod) = F.n
+ngens(F::AbstractFreeMod) = dim(F)
 
 @doc Markdown.doc"""
     ==(F::FreeMod, G::FreeMod)
@@ -137,11 +144,11 @@ function Base.:(==)(F::FreeMod, G::FreeMod)
 end
 
 @doc Markdown.doc"""
-    iszero(F::FreeMod)
+    iszero(F::AbstractFreeMod)
 
 Check if `F` is the zero module, that is if `F` has rank 0.
 """
-function iszero(F::FreeMod)
+function iszero(F::AbstractFreeMod)
   return rank(F) == 0
 end
 
@@ -168,47 +175,47 @@ true
 
 ```
 """
-struct FreeModElem{T}
+struct FreeModElem{T} <: AbstractFreeModElem{T}
   coords::SRow{T} # also usable via coeffs()
   parent::FreeMod{T}
 end
 
-function in(v::FreeModElem, M::ModuleFP)
+function in(v::AbstractFreeModElem, M::ModuleFP)
   return parent(v) === M
 end
 
 @doc Markdown.doc"""
-    coords(v::FreeModElem)
+    coords(v::AbstractFreeModElem)
 
 Return the entries (wrt to the standard basis) of `v` as a sparse row.
 """
-function coords(v::FreeModElem)
+function coords(v::AbstractFreeModElem)
   return v.coords
 end
 
 @doc Markdown.doc"""
-    coeffs(v::FreeModElem)
+    coeffs(v::AbstractFreeModElem)
 
 Return the entries (wrt to the standard basis) of `v` as a sparse row.
 """
-function coeffs(v::FreeModElem)
+function coeffs(v::AbstractFreeModElem)
   return coords(v)
 end
 
 @doc Markdown.doc"""
-    repres(v::FreeModElem)
+    repres(v::AbstractFreeModElem)
 
 Return just `v`. This function exists for compatiblity (with subquotient elements) reasons.
 """
-function repres(v::FreeModElem)
+function repres(v::AbstractFreeModElem)
   return v
 end
 
-function getindex(v::FreeModElem, i::Int)
-  if isempty(v.coords)
-    return zero(base_ring(v.parent))
+function getindex(v::AbstractFreeModElem, i::Int)
+  if isempty(coords(v))
+    return zero(base_ring(parent(v)))
   end
-  return v.coords[i]
+  return coords(v)[i]
 end
 
 elem_type(::Type{FreeMod{T}}) where {T} = FreeModElem{T}
@@ -232,11 +239,11 @@ function show(io::IO, e::FreeModElem)
 end
 
 @doc Markdown.doc"""
-    basis(F::FreeMod)
+    basis(F::AbstractFreeMod)
 
 Return the standard basis of `F`.
 """
-function basis(F::FreeMod)
+function basis(F::AbstractFreeMod)
   bas = elem_type(F)[]
   for i=1:dim(F)
     s = Hecke.sparse_row(F.R, [(i, F.R(1))])
@@ -246,101 +253,101 @@ function basis(F::FreeMod)
 end
 
 @doc Markdown.doc"""
-    gens(F::FreeMod)
+    gens(F::AbstractFreeMod)
 
 Return the (canonical) generators of the free module `F`.
 """
-gens(F::FreeMod) = basis(F)
+gens(F::AbstractFreeMod) = basis(F)
 
 @doc Markdown.doc"""
-    gen(F::FreeMod, i::Int)
+    gen(F::AbstractFreeMod, i::Int)
 
 Return the `i`th generator of `F`, that is the `i`th unit vector.
 """
-function gen(F::FreeMod, i::Int)
+function gen(F::AbstractFreeMod, i::Int)
   @assert 0 < i <= ngens(F)
   s = Hecke.sparse_row(F.R, [(i, F.R(1))])
   return FreeModElem(s, F)
 end
 
-function Base.getindex(F::FreeMod, i::Int)
+function Base.getindex(F::AbstractFreeMod, i::Int)
   i == 0 && return zero(F)
   return gen(F, i)
 end
 
 @doc Markdown.doc"""
-    base_ring(F::FreeMod)
+    base_ring(F::AbstractFreeMod)
 
 Return the base ring of the free module `F`.
 """
-base_ring(F::FreeMod) = F.R
+base_ring(F::AbstractFreeMod) = F.R
 
 #TODO: Parent - checks everywhere!!!
 
 # the negative of a free module element
--(a::FreeModElem) = FreeModElem(-a.coords, a.parent)
+-(a::AbstractFreeModElem) = FreeModElem(-a.coords, a.parent)
 
 # Addition of free module elements
-function +(a::FreeModElem, b::FreeModElem)
+function +(a::AbstractFreeModElem, b::AbstractFreeModElem)
    check_parent(a, b)
-   return FreeModElem(a.coords+b.coords, a.parent)
+   return FreeModElem(a.coords+b.coords, parent(a))
 end
 
 # Subtraction of free module elements
-function -(a::FreeModElem, b::FreeModElem)
+function -(a::AbstractFreeModElem, b::AbstractFreeModElem)
     check_parent(a,b)
-    return FreeModElem(a.coords-b.coords, a.parent)
+    return FreeModElem(a.coords-b.coords, parent(a))
 end
 
 # Equality of free module elements
-function Base.:(==)(a::FreeModElem, b::FreeModElem) 
+function Base.:(==)(a::AbstractFreeModElem, b::AbstractFreeModElem) 
     check_parent(a,b)
     return a.coords == b.coords
 end
 
 # scalar multiplication with polynomials, integers
-function *(a::MPolyElem_dec, b::FreeModElem)
+function *(a::MPolyElem_dec, b::AbstractFreeModElem)
   if parent(a) !== base_ring(parent(b))
     error("elements not compatible")
   end
-  return FreeModElem(a*b.coords, b.parent)
+  return FreeModElem(a*b.coords, parent(b))
 end
-function *(a::MPolyElem, b::FreeModElem) 
+function *(a::MPolyElem, b::AbstractFreeModElem) 
   if parent(a) !== base_ring(parent(b))
     error("elements not compatible")
   end
-  return FreeModElem(a*b.coords, b.parent)
+  return FreeModElem(a*b.coords, parent(b))
 end
-function *(a::RingElem, b::FreeModElem) 
+function *(a::RingElem, b::AbstractFreeModElem) 
   if parent(a) !== base_ring(parent(b))
     error("elements not compatible")
   end
-  return FreeModElem(a*b.coords, b.parent)
+  return FreeModElem(a*b.coords, parent(b))
 end
-*(a::Int, b::FreeModElem) = FreeModElem(a*b.coords, b.parent)
-*(a::Integer, b::FreeModElem) = FreeModElem(b.parent.R(a)*b.coords, b.parent)
-*(a::fmpq, b::FreeModElem) = FreeModElem(b.parent.R(a)*b.coords, b.parent)
+*(a::Int, b::AbstractFreeModElem) = FreeModElem(a*b.coords, parent(b))
+*(a::Integer, b::AbstractFreeModElem) = FreeModElem(b.parent.R(a)*b.coords, parent(b))
+*(a::fmpq, b::AbstractFreeModElem) = FreeModElem(b.parent.R(a)*b.coords, parent(b))
 
 @doc Markdown.doc"""
-    zero(F::FreeMod)
+    zero(F::AbstractFreeMod)
 
 Return the zero element of the free module `F`.
 """
-zero(F::FreeMod) = FreeModElem(sparse_row(F.R, Tuple{Int, elem_type(F.R)}[]), F)
+zero(F::AbstractFreeMod) = FreeModElem(sparse_row(F.R, Tuple{Int, elem_type(F.R)}[]), F)
 
 @doc Markdown.doc"""
-    parent(a::FreeModElem)
+    parent(a::AbstractFreeModElem)
 
 Return the free module where `a` lives in.
 """
-parent(a::FreeModElem) = a.parent
+parent(a::AbstractFreeModElem) = a.parent
 
 @doc Markdown.doc"""
-    iszero(a::FreeModElem)
+    iszero(a::AbstractFreeModElem)
 
 Check whether the free module element `a` is zero.
 """
-iszero(a::FreeModElem) = iszero(a.coords)
+iszero(a::AbstractFreeModElem) = iszero(coords(a))
 
 # data structure for a generating systems for submodules
 # contains structures for the generators, the corresponding module on the Singular side, 
@@ -948,7 +955,7 @@ Moreover, canonical incoming and outgoing morphisms are stored if the correspond
 option is set in suitable functions.
 `SubQuo{T}` is a subtype of `ModuleFP{T}`.
 """
-mutable struct SubQuo{T} <: ModuleFP{T}
+mutable struct SubQuo{T} <: AbstractSubQuo{T}
   #meant to represent sub+ quo mod quo - as lazy as possible
   F::FreeMod{T}
   sub::SubModuleOfFreeModule
@@ -1325,7 +1332,7 @@ a vector) $v$. The element is then just $u := \sum_i v[i]\cdot A[i]$ (where $A[i
 The representative $u$ is also stored (along with the parent module where the 
 element lives in).
 """
-struct SubQuoElem{T} # this needs to be redone TODO
+struct SubQuoElem{T} <: AbstractSubQuoElem{T} # this needs to be redone TODO
   coeffs::SRow{T}
   repres::FreeModElem{T}
   parent::SubQuo
