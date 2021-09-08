@@ -19,25 +19,15 @@
 
   "Rings" => [
      "Rings/intro.md",
-     "AbstractAlgebra/rings.md",
+     "AbstractAlgebra/ring.md",
      "Rings/integer.md",
      "Univariate Polynomials" => [
-        "AbstractAlgebra/polynomial_rings.md",
         "AbstractAlgebra/polynomial.md",
      ],
      "Multivariate Polynomials" => [
-        "AbstractAlgebra/mpolynomial_rings.md",
         "AbstractAlgebra/mpolynomial.md",
      ],
-     "Orders" => [
-        "Hecke/orders/introduction.md",
-        "Hecke/orders/orders.md",
-        "Hecke/orders/elements.md",
-        "Hecke/orders/ideals.md",
-        "Hecke/orders/frac_ideals.md",
-     ],
      "Series Rings" => [
-        "AbstractAlgebra/series_rings.md",
         "AbstractAlgebra/series.md",
         "AbstractAlgebra/puiseux.md",
         "Nemo/series.md",
@@ -47,16 +37,10 @@
 
   "Fields" => [
      "Fields/intro.md",
-     "AbstractAlgebra/fields.md",
+     "AbstractAlgebra/field.md",
      "Rings/rational.md",
-     "Number Fields" => [
-        "Hecke/number_fields/intro.md",
-        "Hecke/number_fields/basics.md",
-        "Hecke/number_fields/elements.md",
-     ],
      "Hecke/FacElem.md",
      "Hecke/class_fields/intro.md",
-     "AbstractAlgebra/fraction_fields.md",
      "AbstractAlgebra/fraction.md",
      "Local Fields" => [
         "Nemo/padic.md",
@@ -68,7 +52,6 @@
   "Linear Algebra" => [
      "LinearAlgebra/intro.md",
      "Hecke/sparse/intro.md",
-     "AbstractAlgebra/matrix_spaces.md",
      "AbstractAlgebra/matrix.md",
      "AbstractAlgebra/matrix_algebras.md",
      "Modules" => [
@@ -86,26 +69,51 @@
      ],
   ],
 
-  "Polyhedral Geometry" => [
-     "PolyhedralGeometry/pg.md",
-     "PolyhedralGeometry/pg_polyhedra.md",
-     "PolyhedralGeometry/pg_linear_programs.md",
+  "Number Theory" => [
+     "NumberTheory/intro.md",
+     "Number Fields" => [
+        "Hecke/number_fields/intro.md",
+        "Hecke/number_fields/fields.md",
+        "Hecke/number_fields/elements.md",
+        "Hecke/number_fields/internal.md",
+     ],
+     "Orders" => [
+        "Hecke/orders/introduction.md",
+        "Hecke/orders/orders.md",
+        "Hecke/orders/elements.md",
+        "Hecke/orders/ideals.md",
+        "Hecke/orders/frac_ideals.md",
+     ],
+     "NumberTheory/abelian_closure.md",
   ],
+    "Polyhedral Geometry" => [
+       "PolyhedralGeometry/intro.md",
+       "Polyhedra"=> [
+         "PolyhedralGeometry/Polyhedra/intro.md",
+         "PolyhedralGeometry/Polyhedra/constructions.md",
+         "PolyhedralGeometry/Polyhedra/polymake.md",
+         "PolyhedralGeometry/Polyhedra/serialization.md"
+       ],
+        "PolyhedralGeometry/cones.md",
+        "PolyhedralGeometry/fans.md",
+        "PolyhedralGeometry/linear_programs.md",
+        "PolyhedralGeometry/subdivisions_of_points.md"
+    ],
 
   "Commutative Algebra" => [
-     "CommutativeAlgebra/ca.md",
-     "CommutativeAlgebra/ca_rings.md",
-     "CommutativeAlgebra/ca_ideals.md",
-     "CommutativeAlgebra/ca_modules.md",
-     "CommutativeAlgebra/ca_quotient_rings.md",
-     "CommutativeAlgebra/ca_affine_algebras.md",
-     "CommutativeAlgebra/ca_binomial_ideals.md",
+     "CommutativeAlgebra/intro.md",
+     "CommutativeAlgebra/rings.md",
+     "CommutativeAlgebra/ideals.md",
+     "CommutativeAlgebra/modules.md",
+     "CommutativeAlgebra/quotient_rings.md",
+     "CommutativeAlgebra/affine_algebras.md",
+     "CommutativeAlgebra/binomial_ideals.md",
   ],
 
   "Invariant Theory" => [
-     "InvariantTheory/it.md",
-     "InvariantTheory/it_fg.md",
-     "InvariantTheory/it_lrg.md",
+     "InvariantTheory/intro.md",
+     "InvariantTheory/finite_groups.md",
+     "InvariantTheory/reductive_groups.md",
   ],
 
   "References" => "references.md",

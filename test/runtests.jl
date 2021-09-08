@@ -1,6 +1,5 @@
 using Oscar
 using Test
-using GAP
 
 include("Polytopes/runtests.jl")
 
@@ -21,9 +20,10 @@ include("Polymake/nmbthy-test.jl")
 include("Groups/runtests.jl")
 include("Rings/NumberField.jl")
 include("Rings/FunctionField-test.jl")
+include("Rings/AbelianClosure.jl")
 
 if Oscar.is_dev
-   include("Examples/PlaneCurve-test.jl")
+  include("Examples/PlaneCurve-test.jl")
 end
 
 include("Rings/binomial-ideals-test.jl")
@@ -32,6 +32,6 @@ include("Examples/galois-test.jl")
 include("Examples/ModStdQt-test.jl")
 include("Examples/ModStdNF-test.jl")
 
-include("Modules/FreeModules-graded-test.jl")
-include("Modules/GradedModules.jl")
 include("Modules/UngradedModules.jl")
+
+include("InvariantTheory/invariant_rings-test.jl")

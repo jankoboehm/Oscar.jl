@@ -45,7 +45,8 @@ function isconjugate_subgroup(G::Oscar.PermGroup, U::Oscar.PermGroup, V::Oscar.P
   return false, one(U)
 end
 
-function maximal_subgroup_reps(G::PermGroup)
+export maximal_subgroup_reps
+function maximal_subgroup_reps(G::Oscar.GAPGroup)
   return Oscar._as_subgroups(G, GAP.Globals.MaximalSubgroupClassReps(G.X))
 end
 
@@ -108,7 +109,7 @@ end
 #provided by Thomas Breuer:
 
 Hecke.orbit(G::PermGroup, i::Int) = GAP.gap_to_julia(GAP.Globals.Orbit(G.X, GAP.julia_to_gap(i)))
-orbits(G::PermGroup) = Array{Array{Int,1},1}(GAP.Globals.Orbits(G.X, GAP.GapObj(1:degree(G))))
+orbits(G::PermGroup) = Vector{Vector{Int}}(GAP.Globals.Orbits(G.X, GAP.GapObj(1:degree(G))))
 
 function action_homomorphism(G::PermGroup, omega::AbstractVector{Int})
   mp = GAP.Globals.ActionHomomorphism(G.X, GAP.julia_to_gap(omega))

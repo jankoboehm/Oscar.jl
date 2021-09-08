@@ -1,7 +1,7 @@
 module GaloisGrp
 
 using Oscar, Markdown
-import Base: ^, +, -, *
+import Base: ^, +, -, *, ==
 import Oscar: Hecke, AbstractAlgebra, GAP
 using Oscar: SLPolyRing, SLPoly, SLPolynomialRing
 
@@ -12,7 +12,7 @@ import Hecke: orbit, fixed_field
 
 
 function __init__()
-  GAP.Packages.load("ferret", install = true)
+  GAP.Packages.load("ferret"; install=true)
 
   Hecke.add_verbose_scope(:GaloisGroup)
   Hecke.add_verbose_scope(:GaloisInvariant)
@@ -47,7 +47,7 @@ struct BoundRingElem{T} <: AbstractAlgebra.RingElem
 end
 
 function Base.show(io::IO, b::BoundRingElem)
-  print(io, "x <= $(b.val)")
+  print(io, "(x <= $(b.val))")
 end
 
 function check_parent(a::BoundRingElem, b::BoundRingElem)
@@ -55,6 +55,7 @@ function check_parent(a::BoundRingElem, b::BoundRingElem)
   return true
 end
 
+Base.:(==)(a::BoundRingElem, b::BoundRingElem) = check_parent(a, b) && a.val == b.val
 +(a::BoundRingElem, b::BoundRingElem) = check_parent(a, b) && BoundRingElem(a.p.add(a.val, b.val), a.p)
 -(a::BoundRingElem, b::BoundRingElem) = check_parent(a, b) && BoundRingElem(a.p.add(a.val, b.val), a.p)
 *(a::BoundRingElem, b::BoundRingElem) = check_parent(a, b) && BoundRingElem(a.p.mul(a.val, b.val), a.p)
@@ -66,8 +67,14 @@ Oscar.parent(a::BoundRingElem) = a.p
 value(a::BoundRingElem) = a.val
 Base.isless(a::BoundRingElem, b::BoundRingElem) = check_parent(a, b) && isless(value(a), value(b))
 
+Oscar.parent_type(::BoundRingElem{T}) where T = BoundRing{T}
+Oscar.elem_type(::BoundRing{T}) where T = BoundRingElem{T}
+Oscar.parent_type(::Type{BoundRingElem{T}}) where T = BoundRing{T}
+Oscar.elem_type(::Type{BoundRing{T}}) where T = BoundRingElem{T}
+
 (R::BoundRing)(a::fmpz) = BoundRingElem(R.map(abs(a)), R)
 (R::BoundRing)(a::Integer) = BoundRingElem(fmpz(a), R)
+(R::BoundRing)() = BoundRingElem(fmpz(0), R)
 (R::BoundRing)(a::BoundRingElem) = a
 Oscar.one(R::BoundRing) = R(1)
 Oscar.zero(R::BoundRing) = R(0)
@@ -82,14 +89,14 @@ Operations are:
  - `ab  := a+b`
 """
 function max_ring()
-  return BoundRing( (x,y) -> x+y, (x,y) -> max(x, y), (x,y) -> y*x, x->x, "max-ring")
+  return BoundRing{fmpz}( (x,y) -> x+y, (x,y) -> max(x, y), (x,y) -> y*x, x->x, "max-ring")
 end
 
 """
 Normal ring
 """
 function add_ring()
-  return BoundRing{fmpz}( (x,y) -> x*y, (x,y) -> x+y, (x,y) -> x^y, x->x, "add-ring")
+  return BoundRing{fmpz}( (x,y) -> x*y, (x,y) -> x+y, (x,y) -> x^y, x->abs(x), "add-ring")
 end
 
 #roots rt are power series sum a_n x^n
@@ -173,16 +180,13 @@ end
 Oscar.mul!(a::BoundRingElem, b::BoundRingElem, c::BoundRingElem) = b*c
 Oscar.addeq!(a::BoundRingElem, b::BoundRingElem) = a+b
 
-Oscar.parent_type(::BoundRingElem) = BoundRing
-Oscar.elem_type(::BoundRing) = BoundRingElem
-
 #my 1st invariant!!!
 @doc Markdown.doc"""
-    sqrt_disc(a::Array{<:Any, 1})
+    sqrt_disc(a::Vector{<:Any})
 
 The product of differences ``a[i] - a[j]`` for all indices ``i<j``.    
 """
-function sqrt_disc(a::Array{<:Any, 1})
+function sqrt_disc(a::Vector{<:Any})
   if length(a) == 1
     return one(parent(a[1]))
   end
@@ -196,7 +200,7 @@ Evaluates the `i`-th elementary symmetric polynomial at the values in `g`.
 The `i`-th elementary symmetric polynomial is the sum over all
 products of `i` distinct variables.
 """
-function elementary_symmetric(g::Array{<:Any, 1}, i::Int)
+function elementary_symmetric(g::Vector{<:Any}, i::Int)
   return sum(prod(g[i] for i = s) for s = Hecke.subsets(Set(1:length(g)), i))
 end
 
@@ -206,7 +210,7 @@ end
 Evaluates the `i`-th power sums at the values in `g`, ie. the sum
 of the `i`-th power of the values.
 """
-function power_sum(g::Array{<:Any, 1}, i::Int)
+function power_sum(g::Vector{<:Any}, i::Int)
   return sum(a^i for a = g)
 end
 
@@ -215,7 +219,7 @@ end
 
 Compute the product of all differences of distinct elements in the array.    
 """
-function Oscar.discriminant(g::Array{<:RingElem, 1})
+function Oscar.discriminant(g::Vector{<:RingElem})
   return prod(a-b for a = g for b = g if a!=b)
 end
 
@@ -264,6 +268,7 @@ Compute the polynomial with roots sums of `m` roots of `f` using
 resultants.
 """
 function msum_poly(f::PolyElem, m::Int)
+  f = divexact(f, leading_coefficient(f))
   N = binomial(degree(f), m)
   p = Hecke.polynomial_to_power_sums(f, N)
   p = vcat([degree(f)*one(base_ring(f))], p)
@@ -301,7 +306,7 @@ mutable struct GaloisCtx{T}
   C::T # a suitable root context
   B::BoundRingElem # a "bound" on the roots, might be "anything"
   G::PermGroup
-  chn::Array{Tuple{PermGroup, SLPoly, fmpz_poly, Array{PermGroupElem, 1}}, 1}
+  chn::Vector{Tuple{PermGroup, SLPoly, fmpz_poly, Vector{PermGroupElem}}}
   start::Vector{Vector{Vector{Int}}} # a list of block systems
   data::Any #whatever else is needed in special cases
   #= the descent chain, recodring
@@ -316,8 +321,8 @@ mutable struct GaloisCtx{T}
     r = new{Hecke.qAdicRootCtx}()
     r.f = f
     r.C = Hecke.qAdicRootCtx(f, p, splitting_field = true)
-    r.B = add_ring()(roots_upper_bound(f))
-    r.chn = Tuple{PermGroup, SLPoly, fmpz_poly, Array{PermGroupElem, 1}}[]
+    r.B = add_ring()(leading_coefficient(f)*roots_upper_bound(f))
+    r.chn = Tuple{PermGroup, SLPoly, fmpz_poly, Vector{PermGroupElem}}[]
     return r
   end
   #=
@@ -343,7 +348,7 @@ mutable struct GaloisCtx{T}
     r.f = evaluate(f, [s, Qts(t)])
     r.C = HQ
     #r.B = more complicated: needs degree (inf. val.) bound as well as coeffs
-    r.chn = Tuple{PermGroup, SLPoly, fmpz_poly, Array{PermGroupElem, 1}}[]
+    r.chn = Tuple{PermGroup, SLPoly, fmpz_poly, Vector{PermGroupElem}}[]
     vl = roots_upper_bound(f)
     r.B = qt_ring()(vl[1])
     r.data = vl[2]
@@ -351,8 +356,6 @@ mutable struct GaloisCtx{T}
   end
 end
 
-Base.floor(::Type{Int}, q::fmpq) = Int(floor(fmpz, q))
-Base.ceil(::Type{Int}, q::fmpq) = Int(ceil(fmpz, q))
 Base.round(::Type{Int}, q::fmpq) = Int(round(fmpz, q))
 
 function Oscar.prime(C::GaloisCtx{Hecke.MPolyFact.HenselCtxFqRelSeries{Generic.RelSeries{qadic}}})
@@ -419,12 +422,20 @@ end
 The roots of the polynomial used to define the Galois-context in the fixed order
 used in the algorithm. The roots are returned up to a precision of `pr`
 p-adic digits, thus they are correct modulo ``p^pr``
+
+For non-monic polynomials they roots are scaled by the leading coefficient.
+The bound in the `GaloisCtx` is also adjusted.
 """
-function Hecke.roots(G::GaloisCtx{Hecke.qAdicRootCtx}, pr::Int)
-  a = Hecke.roots(G.C, pr)::Array{qadic, 1}
-  return Hecke.expand(a, all = true, flat = false, degs = Hecke.degrees(G.C.H))::Array{qadic, 1}
+function Hecke.roots(G::GaloisCtx{Hecke.qAdicRootCtx}, pr::Int; raw::Bool = false)
+  a = Hecke.roots(G.C, pr)::Vector{qadic}
+  if raw
+    return Hecke.expand(a, all = true, flat = false, degs = Hecke.degrees(G.C.H))::Vector{qadic}
+  else
+    return leading_coefficient(G.f) .* Hecke.expand(a, all = true, flat = false, degs = Hecke.degrees(G.C.H))::Vector{qadic}
+  end
 end
-function Hecke.roots(G::GaloisCtx{<:Hecke.MPolyFact.HenselCtxFqRelSeries}, pr)
+
+function Hecke.roots(G::GaloisCtx{<:Hecke.MPolyFact.HenselCtxFqRelSeries}, pr; raw::Bool = false)
   C = G.C
   while precision(C)[1] < pr[1]
     Hecke.MPolyFact.lift_q(C)
@@ -793,27 +804,28 @@ function invariant(G::PermGroup, H::PermGroup)
       y = [sum(g[b]) for b = B]
       d = [sqrt_disc(g[b]) for b = B]
       D = sqrt_disc(y)
+
       I = D
       if all(p->isprobably_invariant(I, p), H) &&
-         any(p->!isprobably_invariant(I, p), G)
+         any(p->!isprobably_invariant(I, p), G) #TODO: this can be decided theoretically
         @vprint :GaloisInvariant 3 "using D-invar for $BB\n"
         return I
       end
       I = elementary_symmetric(d, 1)
       if all(p->isprobably_invariant(I, p), H) &&
-         any(p->!isprobably_invariant(I, p), G)
+         any(p->!isprobably_invariant(I, p), G) #TODO: this can be decided theoretically
         @vprint :GaloisInvariant 3 "using s1-invar for $BB\n"
         return I
       end
       I = elementary_symmetric(d, m)
       if all(p->isprobably_invariant(I, p), H) &&
-         any(p->!isprobably_invariant(I, p), G)
+         any(p->!isprobably_invariant(I, p), G) #TODO: this can decided theroetically
         @vprint :GaloisInvariant 3 "using sm-invar for $BB\n"
         return I
       end
       I = elementary_symmetric(d, 2)
       if all(p->isprobably_invariant(I, p), H) &&
-         any(p->!isprobably_invariant(I, p), G)
+         any(p->!isprobably_invariant(I, p), G) #TODO
         @vprint :GaloisInvariant 3 "using s2-invar for $BB\n"
         return I
       end
@@ -894,7 +906,7 @@ function resolvent(C::GaloisCtx, G::PermGroup, U::PermGroup, extra::Int = 5)
 end
 
 struct GroupFilter
-  f::Array{Function, 1}
+  f::Vector{Function}
   GroupFilter() = new([x->true])
 end
 
@@ -924,10 +936,10 @@ Furthermore we may compute (and store)
 """
 mutable struct DescentEnv
   G::PermGroup
-  s::Array{PermGroup, 1}
+  s::Vector{PermGroup}
   I::Dict{Int, SLPoly}
-  T::Dict{Int, Array{fmpz_poly, 1}}
-  l::Array{Int, 1}
+  T::Dict{Int, Vector{fmpz_poly}}
+  l::Vector{Int}
   #the coset reps need to be cached as well
   #a "work limit" on the "invariant" function
   #a more select choice of group....
@@ -938,7 +950,7 @@ mutable struct DescentEnv
     r.G = G
     r.s = filter(f, s)
     r.I = Dict{Int, SLPoly}()
-    r.T = Dict{Int, Array{fmpz_poly, 1}}()
+    r.T = Dict{Int, Vector{fmpz_poly}}()
     r.l = zeros(Int, length(r.s))
     return r
   end
@@ -1002,7 +1014,7 @@ Returns a triple:
  - a permutation representing the operation of the Frobenius automorphism
 """
 function starting_group(GC::GaloisCtx, K::AnticNumberField; useSubfields::Bool = true)
-  c = roots(GC, 5)
+  c = roots(GC, 5, raw = true)
 
   @vprint :GaloisGroup 1 "computing starting group (upper bound for Galois group)\n"
 
@@ -1014,7 +1026,7 @@ function starting_group(GC::GaloisCtx, K::AnticNumberField; useSubfields::Bool =
   end
 
   #compute the block system for all subfields...
-  bs = Array{Array{Int, 1}, 1}[]
+  bs = Vector{Vector{Int}}[]
   for (s, ms) = S
     if degree(s) == degree(K) || degree(s) == 1
       continue
@@ -1026,7 +1038,7 @@ function starting_group(GC::GaloisCtx, K::AnticNumberField; useSubfields::Bool =
 
       g = ms(gen(s))
       d = map(parent(K.pol)(g), c)
-      b = Dict{typeof(c[1]), Array{Int, 1}}()
+      b = Dict{typeof(c[1]), Vector{Int}}()
       for i=1:length(c)
         if Base.haskey(b, d[i])
           push!(b[d[i]], i)
@@ -1125,7 +1137,7 @@ function starting_group(GC::GaloisCtx, K::AnticNumberField; useSubfields::Bool =
 
     @vprint :GaloisGroup 1 "have everything, now getting the 2-sum poly\n"
     if gen(Hecke.Globals.Zx) == ts
-      @vtime :GaloisGroup 2 g = msum_poly(K.pol, 2)
+      @vtime :GaloisGroup 2 g = msum_poly(K.pol, 2) #if f has roots a_i, then g has roots a_i+a_j, if G is 2-transitive, this is pointless.
     else
       @vtime :GaloisGroup 2 g = msum_poly(minpoly(ts(gen(K))), 2)
     end
@@ -1174,8 +1186,8 @@ function find_prime(f::fmpq_poly, extra::Int = 5; pStart::Int = 2*degree(f))
   d_min = min(2, d_max)
   p_best = 1
   cnt = 5
-  ct = Set{Array{Int, 1}}()
-  ps = Array{Tuple{Int, Int}, 1}()
+  ct = Set{Vector{Int}}()
+  ps = Vector{Tuple{Int, Int}}()
 
   #find a q-adic splitting field of "good degree":
   # - too small, then the Frobenius automorphisms is not containing lots of
@@ -1189,7 +1201,7 @@ function find_prime(f::fmpq_poly, extra::Int = 5; pStart::Int = 2*degree(f))
       continue
     end
     no_p +=1 
-    push!(ct, sort(map(degree, collect(keys(lf.fac)))))
+    push!(ct, sort(map(degree, collect(keys(lf.fac))))) # ct = cycle types as vector of cycle lengths
     d = lcm([degree(x) for x = keys(lf.fac)])
     if d <= d_max 
       if d >= d_min
@@ -1253,9 +1265,15 @@ function galois_group(K::AnticNumberField, extra::Int = 5; useSubfields::Bool = 
 
   p, ct = find_prime(K.pol, pStart = pStart)
 
+  # TODO: detect A_n/S_n here, handle separately
+
+  # TODO: otherwise, try to detect here if we are primitive or even 2-transitive
+
   GC = GaloisCtx(Hecke.Globals.Zx(K.pol), p)
 
   G, F, si = starting_group(GC, K, useSubfields = useSubfields)
+
+  # TODO: here we know that we are primitive; can we detect 2-transitive (inside starting_group)?
 
   return descent(GC, G, F, si, extra = extra)
 
@@ -1444,7 +1462,7 @@ Finds a Tschirnhausen transformation, ie a polynomial in `Zx` s.th.
 
   ``|\{ I^s(t(r_1), ..., t(r_n)) | s in T\}| = |T|``
 """
-function find_transformation(r, I::SLPoly, T::Array{PermGroupElem, 1})
+function find_transformation(r, I::SLPoly, T::Vector{PermGroupElem})
   Zx = Hecke.Globals.Zx
   ts = gen(Zx)
   while true
@@ -1539,7 +1557,10 @@ function fixed_field(GC::GaloisCtx, U::PermGroup, extra::Int = 5)
     push!(ps, isinteger(GC, B, sum(d))[2])
   end
 
-  return number_field(Hecke.power_sums_to_polynomial(ps), check = false, cached = false)[1]
+  k = number_field(Hecke.power_sums_to_polynomial(ps), check = false, cached = false)[1]
+  @assert all(x->isone(denominator(x)), coefficients(k.pol))
+  @assert ismonic(k.pol)
+  return k
 end
 
 #based on 
@@ -1710,4 +1731,20 @@ end
 
 using .GaloisGrp
 export galois_group, transitive_group_identification, slpoly_ring, elementary_symmetric,
-       power_sum, to_elementary_symmetric, cauchy_ideal, galois_ideal, fixed_field
+       power_sum, to_elementary_symmetric, cauchy_ideal, galois_ideal, fixed_field, 
+       maximal_subgroup_reps
+       
+#=
+       M12: 2-transitive, hence msum is a waste
+x^12 - 4*x^11 + 4*x^10 + 12*x^9 - 72*x^8 + 168*x^7 - 132*x^6 - 324*x^5 + 1197*x^4 - 1752*x^3 + 1500*x^2 - 672*x + 207 
+
+several index 2 groups, uses generic invar
+x^16 + 209*x^14 + 102*x^13 + 18138*x^12 + 13232*x^11 + 814855*x^10 + 673869*x^9 + 19699456*x^8 + 17373605*x^7 + 258261711*x^6 + 283233089*x^5 + 2368948579*x^4 + 2075376015*x^3 + 13009666150*x^2 + 14279830429*x + 37222748001
+
+
+primitive, 2-transitive
+x^10 - 2*x^9 - 263*x^8 + 1136*x^7 + 18636*x^6 - 120264*x^5 - 81916*x^4 + 1314656*x^3 - 290197*x^2 - 3135542*x + 2052019
+
+needs the group theory test for isinvar in line 805 and related
+x^16 + 4*x^15 + 20*x^14 + 44*x^13 + 106*x^12 + 120*x^11 + 180*x^10 + 44*x^9 + 134*x^8 - 120*x^7 + 172*x^6 - 32*x^5 + 598*x^4 + 312*x^3 + 616*x^2 + 147
+=#
