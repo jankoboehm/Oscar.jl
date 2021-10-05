@@ -7,7 +7,7 @@ using Oscar
 ```
 
 ```@contents
-Pages = ["it_fg.md"]
+Pages = ["finite_groups.md"]
 ```
 
 # Invariants of Finite Groups
@@ -121,5 +121,12 @@ irreducible_secondary_invariants(IR::InvRing)
 
 ## Fundamental Systems of Invariants
 
+```@docs
+fundamental_invariants(IR::InvRing)
+```
 
 ## Invariant Rings as Affine Algebras
+
+```@docs
+affine_algebra(IR::InvRing)
+```
