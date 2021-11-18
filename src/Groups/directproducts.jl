@@ -39,7 +39,7 @@ the output is a triple (`G`, `emb`, `proj`), where `emb` and `proj` are the
 vectors of the embeddings (resp. projections) of the direct product `G`.
 """
 function direct_product(L::AbstractVector{<:GAPGroup}; morphisms=false)
-   X = GAP.Globals.DirectProduct(GAP.julia_to_gap([G.X for G in L]))
+   X = GAP.Globals.DirectProduct(GapObj([G.X for G in L]))
    DP = DirectProductGroup(X,L,X,true)
    if morphisms
       emb = [_hom_from_gap_map(L[i],DP,GAP.Globals.Embedding(X,i)) for i in 1:length(L)]
@@ -67,7 +67,7 @@ the output is a triple (`G`, `emb`, `proj`), where `emb` and `proj` are the
 vectors of the embeddings (resp. projections) of the direct product `G`.
 """
 function inner_direct_product(L::AbstractVector{T}; morphisms=false) where T<:Union{PcGroup,PermGroup,FPGroup}
-   P = GAP.Globals.DirectProduct(GAP.julia_to_gap([G.X for G in L]))
+   P = GAP.Globals.DirectProduct(GapObj([G.X for G in L]))
    if T==PermGroup
       DP = T(P,GAP.Globals.NrMovedPoints(P))
    else
@@ -98,7 +98,7 @@ number_of_factors(G::DirectProductGroup) = length(G.L)
 
 Return the direct product of `n` copies of `G`.
 """
-function cartesian_power(G::GAPGroup, n::Base.Integer)
+function cartesian_power(G::GAPGroup, n::Int)
    L = [G for i in 1:n]
    return direct_product(L)
 end
@@ -112,7 +112,7 @@ The parameter `morphisms` is `false` by default. If it is set `true`, then
 the output is a triple (`G`, `emb`, `proj`), where `emb` and `proj` are the
 vectors of the embeddings (resp. projections) of the direct product `G`.
 """
-function inner_cartesian_power(G::T, n::Base.Integer; morphisms=false) where T <: GAPGroup
+function inner_cartesian_power(G::T, n::Int; morphisms=false) where T <: GAPGroup
    L = [G for i in 1:n]
    return inner_direct_product(L; morphisms=morphisms)
 end
@@ -122,7 +122,7 @@ end
 
 Return the `j`-th factor of `G`.
 """
-function factor_of_direct_product(G::DirectProductGroup, j::Base.Integer)
+function factor_of_direct_product(G::DirectProductGroup, j::Int)
    if j in 1:length(G.L) return G.L[j]
    else throw(ArgumentError("index not valid"))
    end
@@ -155,11 +155,11 @@ function as_polycyclic_group(G::DirectProductGroup)
 end
 
 """
-    embedding(G::DirectProductGroup, j::Integer)
+    embedding(G::DirectProductGroup, j::Int)
 
 Return the embedding of the `j`-th component of `G` into `G`, for `j` = 1,...,#factors of `G`.
 """
-function embedding(G::DirectProductGroup, j::Base.Integer)
+function embedding(G::DirectProductGroup, j::Int)
    j in 1:length(G.L) || throw(ArgumentError("index not valid"))
    G.isfull || throw(ArgumentError("Embedding is not defined for proper subgroups of direct products"))
    f=GAP.Globals.Embedding(G.X,j)
@@ -169,11 +169,11 @@ function embedding(G::DirectProductGroup, j::Base.Integer)
 end
 
 """
-    projection(G::DirectProductGroup, j::Integer)
+    projection(G::DirectProductGroup, j::Int)
 
 Return the projection of `G` into the `j`-th component of `G`, for `j` = 1,...,#factors of `G`.
 """
-function projection(G::DirectProductGroup, j::Base.Integer)
+function projection(G::DirectProductGroup, j::Int)
    f=GAP.Globals.Projection(G.Xfull,j)
    j in 1:length(G.L) || throw(ArgumentError("index not valid"))
    H = G.L[j]
@@ -204,7 +204,7 @@ function Base.show(io::IO, G::DirectProductGroup)
       print(io, "DirectProduct of ")
       display(G.L)
    else
-      print(io, GAP.gap_to_julia(GAP.Globals.StringViewObj(G.X)))
+      print(io, String(GAP.Globals.StringViewObj(G.X)))
    end
 end
 
@@ -296,12 +296,12 @@ Return whether `G` is a semidirect product of two groups, instead of a proper su
 isfull_semidirect_product(G::SemidirectProductGroup) = G.isfull
 
 """
-    embedding(G::SemidirectProductGroup, n::Integer)
+    embedding(G::SemidirectProductGroup, n::Int)
 
 Return the embedding of the `n`-th component of `G` into `G`, for `n` = 1,2.
 It is not defined for proper subgroups of semidirect products.
 """
-function embedding(G::SemidirectProductGroup{S,T}, n::Base.Integer) where S where T
+function embedding(G::SemidirectProductGroup{S,T}, n::Int) where S where T
    @assert G.isfull "Embedding not defined for proper subgroups of semidirect products"
    if n==1
       f=GAP.Globals.Embedding(G.X,2)
@@ -336,10 +336,10 @@ end
 
 function Base.show(io::IO, x::SemidirectProductGroup)
    if x.isfull
-      print(io, "SemidirectProduct( ", GAP.gap_to_julia(GAP.Globals.StringViewObj(x.N.X)),
-                " , ", GAP.gap_to_julia(GAP.Globals.StringView(x.H.X))," )")
+      print(io, "SemidirectProduct( ", String(GAP.Globals.StringViewObj(x.N.X)),
+                " , ", String(GAP.Globals.StringView(x.H.X))," )")
    else
-      print(io, GAP.gap_to_julia(GAP.Globals.StringViewObj(x.X)))
+      print(io, String(GAP.Globals.StringViewObj(x.X)))
    end
 end
 
@@ -368,7 +368,7 @@ typing
 ```
 """
 function wreath_product(G::T, H::PermGroup) where T<: GAPGroup
-   if Set{Int}(GAP.gap_to_julia(GAP.Globals.MovedPoints(H.X)))==Set(1:H.deg)
+   if Set{Int}(GAP.Globals.MovedPoints(H.X))==Set(1:H.deg)
       Wgap=GAP.Globals.WreathProduct(G.X,H.X)
       return WreathProductGroup(Wgap,G,H,id_hom(H),Wgap,true)
    else
@@ -442,11 +442,11 @@ function projection(W::WreathProductGroup)
 end
 
 """
-    embedding(G::WreathProductGroup, n::Integer)
+    embedding(G::WreathProductGroup, n::Int)
 
 Return the embedding of the `n`-th component of `G` into `G`.
 """
-function embedding(W::WreathProductGroup, n::Base.Integer)
+function embedding(W::WreathProductGroup, n::Int)
    W.isfull || throw(ArgumentError("Embedding not defined for proper subgroups of wreath products"))
    n <= GAP.Globals.NrMovedPoints(GAP.Globals.Image(W.a.map))+1 || throw(ArgumentError("n is too big"))
    f = GAP.Globals.Embedding(W.Xfull,n)
@@ -456,7 +456,7 @@ function embedding(W::WreathProductGroup, n::Base.Integer)
    return GAPGroupHomomorphism{typeof(C),WreathProductGroup}(C,W,f)
 end
 
-Base.show(io::IO, x::WreathProductGroup) = print(io, GAP.gap_to_julia(GAP.Globals.StringView(x.X)))
+Base.show(io::IO, x::WreathProductGroup) = print(io, String(GAP.Globals.StringView(x.X)))
 
 
 #TODO : to be fixed

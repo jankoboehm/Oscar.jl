@@ -31,7 +31,7 @@ import Base: +, *, -, //, ==, zero, one, ^, div, isone, iszero, deepcopy_interna
 
 import ..Oscar: addeq!, isunit, parent_type, elem_type, gen, root_of_unity,
                 root, divexact, mul!, roots, isroot_of_unity, promote_rule,
-                AbstractAlgebra
+                AbstractAlgebra, data
 
 export abelian_closure,
        QabField,
@@ -717,9 +717,16 @@ function quadratic_irrationality_info(a::QabElem)
         end
       end
     end
+
+    if cand == nothing
+      # The value is rational.
+      return (coeff(a.data, 0), 0, 1)
+    end
+
     for sigma in galgens
       img = cand^sigma
       if img != a && img != cand
+        # There are more than two Galois conjugates.
         return
       end
     end

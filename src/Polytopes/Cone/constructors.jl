@@ -46,7 +46,14 @@ function Cone(R::Union{VectorIterator{RayVector}, Oscar.MatElem, AbstractMatrix}
     end
 end
 
-==(C0::Cone, C1::Cone) = Polymake.polytope.equal_polyhedra(pm_cone(C0), pm_cone(C1))
+function ==(C0::Cone, C1::Cone)
+    # TODO: Remove the following 4 lines, see #758
+    facets(C0)
+    facets(C1)
+    rays(C0)
+    rays(C1)
+    return Polymake.polytope.equal_polyhedra(pm_object(C0), pm_object(C1))
+end
 
 
 @doc Markdown.doc"""
@@ -76,14 +83,14 @@ end
 
 @doc Markdown.doc"""
 
-    cone_from_inequalities(A::Union{Oscar.MatElem,AbstractMatrix}, b; non_redundant::Bool = false)
+    cone_from_inequalities(A::Union{Oscar.MatElem,AbstractMatrix}; non_redundant::Bool = false)
 
 The (convex) cone defined by
 
 $$\{ x |  Ax ≤ 0 \}.$$
 
 Use `non_redundant = true` if the given description contains no redundant rows to
-avoid unneccessary redundancy checks.
+avoid unnecessary redundancy checks.
 
 # Examples
 ```jldoctest
@@ -108,11 +115,11 @@ function cone_from_inequalities(I::Union{HalfspaceIterator, Oscar.MatElem, Abstr
 end
 
 """
-    pm_cone(C::Cone)
+    pm_object(C::Cone)
 
 Get the underlying polymake `Cone`.
 """
-pm_cone(C::Cone) = C.pm_cone
+pm_object(C::Cone) = C.pm_cone
 
 
 ###############################################################################
@@ -125,4 +132,4 @@ function Base.show(io::IO, C::Cone)
     print(io,"A polyhedral cone in ambient dimension $(ambient_dim(C))")
 end
 
-Polymake.visual(C::Cone; opts...) = Polymake.visual(pm_cone(C); opts...)
+Polymake.visual(C::Cone; opts...) = Polymake.visual(pm_object(C); opts...)

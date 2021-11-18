@@ -5,7 +5,7 @@
 ###############################################################################
 
 @doc Markdown.doc"""
-    PolyhedralFan(Rays::Union{Oscar.MatElem,AbstractMatrix}, [LS::Union{Oscar.MatElem,AbstractMatrix},] Cones::IncidenceMatrix)
+    PolyhedralFan(Rays::Union{VectorIterator{<:RayVector}, Oscar.MatElem,AbstractMatrix}, [LS::Union{Oscar.MatElem,AbstractMatrix},] Cones::IncidenceMatrix)
 
 A polyhedral fan formed from rays and cones made of these rays.
 
@@ -62,47 +62,41 @@ julia> PF=PolyhedralFan(R,IM)
 A polyhedral fan in ambient dimension 2
 ```
 """
-function PolyhedralFan(Rays::Union{Oscar.MatElem,AbstractMatrix}, Incidence::IncidenceMatrix)
-   arr = @Polymake.convert_to Array{Set{Int}} Polymake.common.rows(Incidence)
+function PolyhedralFan(Rays::Union{VectorIterator{<:RayVector}, Oscar.MatElem,AbstractMatrix}, Incidence::IncidenceMatrix)
    PolyhedralFan(Polymake.fan.PolyhedralFan{Polymake.Rational}(
       INPUT_RAYS = matrix_for_polymake(Rays),
-      INPUT_CONES = arr,
+      INPUT_CONES = Incidence,
    ))
 end
-function PolyhedralFan(Rays::Union{Oscar.MatElem,AbstractMatrix}, LS::Union{Oscar.MatElem,AbstractMatrix}, Incidence::IncidenceMatrix)
-   arr = @Polymake.convert_to Array{Set{Int}} Polymake.common.rows(Incidence)
+function PolyhedralFan(Rays::Union{VectorIterator{<:RayVector}, Oscar.MatElem,AbstractMatrix}, LS::Union{Oscar.MatElem,AbstractMatrix}, Incidence::IncidenceMatrix)
    PolyhedralFan(Polymake.fan.PolyhedralFan{Polymake.Rational}(
       INPUT_RAYS = matrix_for_polymake(Rays),
       INPUT_LINEALITY = matrix_for_polymake(LS),
-      INPUT_CONES = arr,
+      INPUT_CONES = Incidence,
    ))
 end
 
 """
-    pm_fan(PF::PolyhedralFan)
+    pm_object(PF::PolyhedralFan)
 
 Get the underlying polymake object, which can be used via Polymake.jl.
 """
-pm_fan(PF::PolyhedralFan) = PF.pm_fan
+pm_object(PF::PolyhedralFan) = PF.pm_fan
 
-
-function PolyhedralFan(itr)
-   cones = collect(Cone, itr)
-   BigObjectArray = Polymake.Array{Polymake.BigObject}(length(cones))
-   for i in 1:length(cones)
-      BigObjectArray[i] = pm_cone(cones[i])
-   end
-   PolyhedralFan(Polymake.fan.check_fan_objects(BigObjectArray))
-end
-
-
+PolyhedralFan(itr::AbstractVector{Cone}) = PolyhedralFan(Polymake.fan.check_fan_objects(pm_object.(itr)...))
 
 #Same construction for when the user gives Matrix{Bool} as incidence matrix
-function PolyhedralFan(Rays::Union{Oscar.MatElem,AbstractMatrix}, LS::Union{Oscar.MatElem,AbstractMatrix}, Incidence::Matrix{Bool})
+function PolyhedralFan(Rays::Union{VectorIterator{<:RayVector}, Oscar.MatElem,AbstractMatrix}, LS::Union{Oscar.MatElem,AbstractMatrix}, Incidence::Matrix{Bool})
    PolyhedralFan(Rays, LS, IncidenceMatrix(Polymake.IncidenceMatrix(Incidence)))
 end
-function PolyhedralFan(Rays::Union{Oscar.MatElem,AbstractMatrix}, Incidence::Matrix{Bool})
+function PolyhedralFan(Rays::Union{VectorIterator{<:RayVector}, Oscar.MatElem,AbstractMatrix}, Incidence::Matrix{Bool})
    PolyhedralFan(Rays,IncidenceMatrix(Polymake.IncidenceMatrix(Incidence)))
+end
+
+
+function PolyhedralFan(C::Cone)
+    pmfan = Polymake.fan.check_fan_objects(pm_object(C))
+    return PolyhedralFan(pmfan)
 end
 
 ###############################################################################

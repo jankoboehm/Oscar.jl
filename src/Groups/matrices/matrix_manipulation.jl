@@ -143,7 +143,7 @@ end
 Return the permutation matrix over the ring `R` corresponding to the sequence `Q` or to the permutation `p`.
 If `Q` is a sequence, then `Q` must contain exactly once every integer from 1 to some `n`.
 """
-function permutation_matrix(F::Ring, Q::AbstractVector{T}) where T <: Base.Integer
+function permutation_matrix(F::Ring, Q::AbstractVector{<:IntegerUnion})
    @assert Set(Q)==Set(1:length(Q)) "Invalid input"
    Z = zero_matrix(F,length(Q),length(Q))
    for i in 1:length(Q) Z[i,Q[i]] = 1 end
@@ -242,6 +242,10 @@ Base.:*(v::AbstractAlgebra.Generic.FreeModuleElem{T},x::MatElem{T},u::AbstractAl
 
 Base.:*(v::AbstractAlgebra.Generic.FreeModuleElem{T},x::MatrixGroupElem{T}) where T <: FieldElem = v.parent(v.v*x.elm)
 Base.:*(x::MatrixGroupElem{T},u::AbstractAlgebra.Generic.FreeModuleElem{T}) where T <: FieldElem = x.elm*transpose(u.v)
+
+# `on_tuples` and `on_sets` delegate to an action via `^` on the subobjects
+# (`^` is the natural action in GAP)
+Base.:^(v::AbstractAlgebra.Generic.FreeModuleElem{T},x::MatrixGroupElem{T}) where T <: FieldElem = v.parent(v.v*x.elm)
 
 # evaluation of the form x into the vectors v and u
 Base.:*(v::AbstractAlgebra.Generic.FreeModuleElem{T},x::MatrixGroupElem{T},u::AbstractAlgebra.Generic.FreeModuleElem{T}) where T <: FieldElem = (v.v*x.elm*transpose(u.v))[1]

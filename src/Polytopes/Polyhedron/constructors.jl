@@ -37,25 +37,28 @@ A polyhedron in ambient dimension 2
 """
 Polyhedron(A::Union{Oscar.MatElem,AbstractMatrix}, b) = Polyhedron((A, b))
 
-function Polyhedron(I::Union{HalfspaceIterator, Tuple{<:Union{Oscar.MatElem, AbstractMatrix}, Any}}, E::Union{Nothing, HalfspaceIterator, Tuple{<:Union{Oscar.MatElem, AbstractMatrix}, Any}} = nothing; non_redundant::Bool = false)
+function Polyhedron(I::Union{HalfspaceIterator, Tuple{<:Union{Oscar.MatElem, AbstractMatrix}, Any}}, E::Union{Nothing, HalfspaceIterator, Tuple{<:Union{Oscar.MatElem, AbstractMatrix}, Any}} = nothing)
     IM = -affine_matrix_for_polymake(I)
     EM = isnothing(E) || _isempty_halfspace(E) ? Polymake.Matrix{Polymake.Rational}(undef, 0, size(IM, 2)) : affine_matrix_for_polymake(E)
 
-    if non_redundant
-        return Polyhedron(Polymake.polytope.Polytope{Polymake.Rational}(FACETS = IM, AFFINE_HULL = EM))
-    else
-        return Polyhedron(Polymake.polytope.Polytope{Polymake.Rational}(INEQUALITIES = IM, EQUATIONS = EM))
-    end
+    return Polyhedron(Polymake.polytope.Polytope{Polymake.Rational}(INEQUALITIES = remove_zero_rows(IM), EQUATIONS = remove_zero_rows(EM)))
 end
 
 """
-    pm_polytope(P::Polyhedron)
+    pm_object(P::Polyhedron)
 
 Get the underlying polymake `Polytope`.
 """
-pm_polytope(P::Polyhedron) = P.pm_polytope
+pm_object(P::Polyhedron) = P.pm_polytope
 
-==(P0::Polyhedron, P1::Polyhedron) = Polymake.polytope.equal_polyhedra(pm_polytope(P0), pm_polytope(P1))
+function ==(P0::Polyhedron, P1::Polyhedron)
+    # TODO: Remove the following 4 lines, see #758
+    facets(P0)
+    vertices(P0)
+    facets(P1)
+    vertices(P1)
+    Polymake.polytope.equal_polyhedra(pm_object(P0), pm_object(P1))
+end
 
 
 ### Construct polyhedron from V-data, as the convex hull of points, rays and lineality.
@@ -129,11 +132,11 @@ function convex_hull(V::Union{VectorIterator{PointVector}, AnyVecOrMat, Oscar.Ma
     lineality = homogenize(LM, 0)
 
     # These matrices are in the right format for polymake.
-    # given non_redundant can avoid unneccessary redundancy checks
+    # given non_redundant can avoid unnecessary redundancy checks
     if non_redundant
         return Polyhedron(Polymake.polytope.Polytope{Polymake.Rational}(VERTICES = points, LINEALITY_SPACE = lineality))
     else
-        return Polyhedron(Polymake.polytope.Polytope{Polymake.Rational}(POINTS = points, INPUT_LINEALITY = lineality))
+        return Polyhedron(Polymake.polytope.Polytope{Polymake.Rational}(POINTS = remove_zero_rows(points), INPUT_LINEALITY = remove_zero_rows(lineality)))
     end
 end
 
@@ -151,4 +154,4 @@ function Base.show(io::IO, P::Polyhedron)
     end
 end
 
-Polymake.visual(P::Polyhedron; opts...) = Polymake.visual(pm_polytope(P); opts...)
+Polymake.visual(P::Polyhedron; opts...) = Polymake.visual(pm_object(P); opts...)

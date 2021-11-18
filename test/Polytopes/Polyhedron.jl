@@ -11,8 +11,6 @@
     square = cube(2)
     C1 = cube(2, 0, 1)
     Pos = Polyhedron([-1 0 0; 0 -1 0; 0 0 -1], [0,0,0])
-    # TODO
-    # @test Polyhedron(([-1 0 0; 0 -1 0; 0 0 -1], [0,0,0]); non_redundant = true) == Pos
     L = Polyhedron([-1 0 0; 0 -1 0], [0,0])
     point = convex_hull([0 1 0])
     s = simplex(2)
@@ -47,7 +45,7 @@
         @test faces(square, 1) isa PolyhedronOrConeIterator{Polyhedron}
         @test length(faces(square, 1)) == 4
         @test size(faces(square, 1).lineality) == (0, 3)
-        @test isnothing(faces(square, -1))
+        @test isnothing(faces(Q2, 0))
         @test vertices(minkowski_sum(Q0, square)).m == [2 -1; 2 1; -1 -1; -1 2; 1 2]
         @test facets(Halfspace, Pos) isa HalfspaceIterator{Halfspace}
         @test facets(Pair, Pos) isa HalfspaceIterator{Pair{Polymake.Matrix{Polymake.Rational}, Polymake.Rational}}
@@ -90,6 +88,10 @@
         nc = normal_cone(square, 1)
         @test rays(nc).m == [1 0; 0 1]
         @test Polyhedron(facets(A)) == A
+        b1 = birkhoff(3)
+        b2 = birkhoff(3, even = true)
+        @test nvertices(pyramid(b1)) + 1 == nvertices(bipyramid(b1))
+        @test nvertices(b1) == nvertices(b2) * 2
     end
 
 end

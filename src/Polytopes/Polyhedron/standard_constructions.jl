@@ -3,6 +3,102 @@
 ### Standard constructions
 ###############################################################################
 ###############################################################################
+@doc Markdown.doc"""
+    birkhoff(n::Integer, even::Bool = false)
+
+Construct the Birkhoff polytope of dimension $n^2$.
+
+This is the polytope of $n \times n$ stochastic matrices (encoded as row vectors of
+length $n^2$), i.e., the matrices with non-negative real entries whose row and column
+entries sum up to one. Its vertices are the permutation matrices.
+
+Use `even = true` to get the vertices only for the even permutation matrices.
+
+# Example
+```jldoctest
+julia> b = birkhoff(3)
+A polyhedron in ambient dimension 9
+
+julia> vertices(b)
+6-element VectorIterator{PointVector{Polymake.Rational}}:
+ [1, 0, 0, 0, 1, 0, 0, 0, 1]
+ [0, 1, 0, 1, 0, 0, 0, 0, 1]
+ [0, 0, 1, 1, 0, 0, 0, 1, 0]
+ [1, 0, 0, 0, 0, 1, 0, 1, 0]
+ [0, 1, 0, 0, 0, 1, 1, 0, 0]
+ [0, 0, 1, 0, 1, 0, 1, 0, 0]
+```
+"""
+birkhoff(n::Integer; even::Bool = false) = Polyhedron(Polymake.polytope.birkhoff(n, Int(even), group=true))
+
+
+
+@doc Markdown.doc"""
+    pyramid(P::Polyhedron, z::Number = 1)
+
+Make a pyramid over the given polyhedron `P`.
+
+The pyramid is the convex hull of the input polyhedron `P` and a point `v`
+outside the affine span of `P`. For bounded polyhedra, the projection of `v` to
+the affine span of `P` coincides with the vertex barycenter of `P`. The scalar `z`
+is the distance between the vertex barycenter and `v`.
+
+
+# Example
+```jldoctest
+julia> c = cube(2)
+A polyhedron in ambient dimension 2
+
+julia> vertices(pyramid(c,5))
+5-element VectorIterator{PointVector{Polymake.Rational}}:
+ [-1, -1, 0]
+ [1, -1, 0]
+ [-1, 1, 0]
+ [1, 1, 0]
+ [0, 0, 5]
+```
+"""
+function pyramid(P::Polyhedron, z::Number=1)
+   pm_in = pm_object(P)
+   has_group = Polymake.exists(pm_in, "GROUP")
+   return Polyhedron(Polymake.polytope.pyramid(pm_in, z, group=has_group))
+end
+
+
+
+@doc Markdown.doc"""
+    bipyramid(P::Polyhedron, z::Number = 1, z_prime::Number = -z)
+
+Make a bipyramid over a pointed polyhedron `P`.
+
+The bipyramid is the convex hull of the input polyhedron `P` and two apexes
+(`v`, `z`), (`v`, `z_prime`) on both sides of the affine span of `P`. For bounded
+polyhedra, the projections of the apexes `v` to the affine span of `P` is the
+vertex barycenter of `P`.
+
+# Example
+```jldoctest
+julia> c = cube(2)
+A polyhedron in ambient dimension 2
+
+julia> vertices(bipyramid(c,2))
+6-element VectorIterator{PointVector{Polymake.Rational}}:
+ [-1, -1, 0]
+ [1, -1, 0]
+ [-1, 1, 0]
+ [1, 1, 0]
+ [0, 0, 2]
+ [0, 0, -2]
+
+```
+"""
+function bipyramid(P::Polyhedron, z::Number=1, z_prime::Number=-z)
+   pm_in = pm_object(P)
+   has_group = Polymake.exists(pm_in, "GROUP")
+   return Polyhedron(Polymake.polytope.bipyramid(pm_in, z, z_prime, group=has_group))
+end
+
+
 
 @doc Markdown.doc"""
     normal_cone(P::Polyhedron, i::Int64)
@@ -38,7 +134,7 @@ function normal_cone(P::Polyhedron, i::Int64)
     if(i<1 || i>nvertices(P))
        throw(ArgumentError("Vertex index out of range"))
     end
-    bigobject = Polymake.polytope.normal_cone(pm_polytope(P), Set{Int64}([i-1]))
+    bigobject = Polymake.polytope.normal_cone(pm_object(P), Set{Int64}([i-1]))
     return Cone(bigobject)
 end
 
@@ -156,7 +252,7 @@ julia> rays(PO)
 ```
 """
 function intersect(P::Polyhedron, Q::Polyhedron)
-   return Polyhedron(Polymake.polytope.intersection(pm_polytope(P), pm_polytope(Q)))
+   return Polyhedron(Polymake.polytope.intersection(pm_object(P), pm_object(Q)))
 end
 
 
@@ -182,9 +278,9 @@ julia> nvertices(M)
 """
 function minkowski_sum(P::Polyhedron, Q::Polyhedron; algorithm::Symbol=:standard)
    if algorithm == :standard
-      return Polyhedron(Polymake.polytope.minkowski_sum(pm_polytope(P), pm_polytope(Q)))
+      return Polyhedron(Polymake.polytope.minkowski_sum(pm_object(P), pm_object(Q)))
    elseif algorithm == :fukuda
-      return Polyhedron(Polymake.polytope.minkowski_sum_fukuda(pm_polytope(P), pm_polytope(Q)))
+      return Polyhedron(Polymake.polytope.minkowski_sum_fukuda(pm_object(P), pm_object(Q)))
    else
       throw(ArgumentError("Unknown minkowski sum `algorithm` argument:" * string(algorithm)))
    end
@@ -212,7 +308,7 @@ julia> length(vertices(product(T,S)))
 6
 ```
 """
-product(P::Polyhedron, Q::Polyhedron) = Polyhedron(Polymake.polytope.product(pm_polytope(P), pm_polytope(Q)))
+product(P::Polyhedron, Q::Polyhedron) = Polyhedron(Polymake.polytope.product(pm_object(P), pm_object(Q)))
 
 @doc Markdown.doc"""
     *(P::Polyhedron, Q::Polyhedron)
@@ -256,7 +352,7 @@ julia> f_vector(T)
  4
 ```
 """
-convex_hull(P::Polyhedron,Q::Polyhedron) = Polyhedron(Polymake.polytope.conv(pm_polytope(P),pm_polytope(Q)))
+convex_hull(P::Polyhedron,Q::Polyhedron) = Polyhedron(Polymake.polytope.conv(pm_object(P),pm_object(Q)))
 
 
 
@@ -308,7 +404,7 @@ julia> volume(SC)//volume(C)
 64
 ```
 """
-*(k::Int, P::Polyhedron) = Polyhedron(Polymake.polytope.scale(pm_polytope(P),k))
+*(k::Int, P::Polyhedron) = Polyhedron(Polymake.polytope.scale(pm_object(P),k))
 
 
 @doc Markdown.doc"""
@@ -365,7 +461,7 @@ function +(P::Polyhedron,v::AbstractVector)
     if ambient_dim(P) != length(v)
         throw(ArgumentError("Translation vector not correct dimension"))
     else
-        return Polyhedron(Polymake.polytope.translate(pm_polytope(P),Polymake.Vector{Polymake.Rational}(v)))
+        return Polyhedron(Polymake.polytope.translate(pm_object(P),Polymake.Vector{Polymake.Rational}(v)))
     end
 end
 
@@ -706,5 +802,29 @@ julia> vertices(P)
 ```
 """
 function polarize(P::Polyhedron)
-    return Polyhedron(Polymake.polytope.polarize(pm_polytope(P)))
+    return Polyhedron(Polymake.polytope.polarize(pm_object(P)))
 end
+
+
+@doc Markdown.doc"""
+
+    project_full(P::Polyhedron)
+
+Project the polyhedron down such that it becomes full dimensional in the new
+ambient space.
+
+```jldoctest
+julia> P = convex_hull([1 0 0; 0 0 0])
+A polyhedron in ambient dimension 3
+
+julia> isfulldimensional(P)
+false
+
+julia> p = project_full(P)
+A polyhedron in ambient dimension 1
+
+julia> isfulldimensional(p)
+true
+```
+"""
+project_full(P::Polyhedron) = Polyhedron(Polymake.polytope.project_full(pm_object(P)))

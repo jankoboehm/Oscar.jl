@@ -1,15 +1,17 @@
 module GrpCoh
 
 using Oscar
+import Oscar:action
 import AbstractAlgebra: Group, Module
 import Base: parent
 
-mutable struct CohomologyModule{gT,mT}
+#TODO: rename into GModule
+mutable struct GModule{gT,mT}
   G::gT
   M::mT
   ac::Vector{Map} # automorphisms of M, one for each generator of G
 
-  function CohomologyModule(G::PermGroup, ac::Vector{<:Map})
+  function GModule(G::PermGroup, ac::Vector{<:Map})
     r = new{PermGroup,typeof(domain(ac[1]))}()
     r.G = G
     r.ac = ac
@@ -22,9 +24,10 @@ mutable struct CohomologyModule{gT,mT}
   mF::GAPGroupHomomorphism  # F -> G, maps F[i] to G[i]
 
   iac::Vector{Map} # the inverses of ac
+  AbstractAlgebra.@declare_other
 end
 
-function Base.show(io::IO, C::CohomologyModule)
+function Base.show(io::IO, C::GModule)
   print(io, C.G, " acting on ", C.M, "\nvia: ", C.ac)
 end
 
@@ -60,46 +63,53 @@ function relations(F::FPGroup)
   return [(x, z) for x = R]
 end
 
-AbstractAlgebra.Group(C::CohomologyModule) = C.G
-AbstractAlgebra.Module(C::CohomologyModule) = C.M
-action(C::CohomologyModule) = C.ac
+AbstractAlgebra.Group(C::GModule) = C.G
+AbstractAlgebra.Module(C::GModule) = C.M
+action(C::GModule) = C.ac
 
-function inv_action(C::CohomologyModule)
+function inv_action(C::GModule)
   if !isdefined(C, :iac)
     C.iac = map(inv, C.ac)
   end
   return C.iac
 end
 
-function fp_group(C::CohomologyModule)
+function fp_group(C::GModule)
   if !isdefined(C, :F)
     C.F, C.mF = fp_group(gens(Group(C)))
   end
   return C.F, C.mF
 end
 
-function action(C::CohomologyModule, g, v)
+function action(C::GModule, g, v::Array)
   @assert parent(g) == Group(C)
-  @assert parent(v) == Module(C)
   F, mF = fp_group(C)
   ac = action(C)
   iac = inv_action(C)
-
   for i = word(preimage(mF, g))
     if i > 0
-      v = ac[i](v)
+      v = map(ac[i], v)
     else
-      v = iac[-i](v)
+      v = map(iac[-i], v)
     end
   end
   return v
+end
+
+function action(C::GModule, g, v)
+  return action(C, g, [v])
+end
+
+function action(C::GModule, g)
+  v = gens(Module(C))
+  return hom(Module(C), Module(C), action(C, g, v))
 end
 
 struct AllCoChains{N, G, M} #Int (dim), Group(elem), Module(elem)
 end
 
 struct CoChain{N, G, M}
-  C::CohomologyModule
+  C::GModule
   d::Dict{NTuple{N, G}, M} #cannot get the type correct...or having Julia bugs?
 end
 
@@ -156,7 +166,11 @@ function (C::CoChain{2})(g::Oscar.BasicGAPGroupElem, h::Oscar.BasicGAPGroupElem)
 end
 (C::CoChain{2})(g::NTuple{2, <:Oscar.BasicGAPGroupElem}) = C(g[1], g[2])
 
-function H_zero(C::CohomologyModule)
+function H_zero(C::GModule)
+  z = AbstractAlgebra.get_special(C, :H_zero)
+  if z !== nothing
+    return domain(z), z
+  end
   G = Group(C)
   M = Module(C)
   id = hom(M, M, gens(M))
@@ -165,10 +179,16 @@ function H_zero(C::CohomologyModule)
   for i=2:length(ac)
     k = intersect(k, kernel(id - ac[i])[1])
   end
-  return k, MapFromFunc(x->CoChain{0,elem_type(G),elem_type(M)}(C, Dict(() => x)), y->y(), k, AllCoChains{0,elem_type(G),elem_type(M)}())
+  z = MapFromFunc(x->CoChain{0,elem_type(G),elem_type(M)}(C, Dict(() => x)), y->y(), k, AllCoChains{0,elem_type(G),elem_type(M)}())
+  AbstractAlgebra.set_special(C, :H_zero => z)
+  return k, z
 end
 
-function H_one(C::CohomologyModule)
+function H_one(C::GModule)
+  z = AbstractAlgebra.get_special(C, :H_one)
+  if z !== nothing
+    return domain(z), z
+  end
   #= idea, after Holt:
   H^1 = crossed homs. due to action on the right
   f(ab) = f(a)^b + f(b)
@@ -212,12 +232,16 @@ function H_one(C::CohomologyModule)
   #TODO: is kernel(g) directly faster than the method above (H_zero)
   #      where kernel(g) is computed slice by slice?
   #TODO: cache the expensive objects!!!
+
   g = sum((ac[i] - idM)*inj[i] for i=1:n)
   lf, lft = issubgroup(K, D)
   Q, mQ = quo(K, image(g)[1])
-  return Q, MapFromFunc(
+  z = MapFromFunc(
     x->CoChain{1,elem_type(G),elem_type(M)}(C, Dict([(gen(G, i),) => pro[i](lft(preimage(mQ, x))) for i=1:ngens(G)])), 
     y->mQ(preimage(lft, sum(inj[i](y(gen(G, i))) for i=1:n))), Q, AllCoChains{1, elem_type(G), elem_type(M)}())
+
+  AbstractAlgebra.set_special(C, :H_one => z)
+  return Q, z    
   #need to ALSO return the coboundary(s)
 end
 
@@ -367,7 +391,11 @@ Base.:-(a::Generic.ModuleHomomorphism) = hom(domain(a), codomain(a), -mat(a))
 Base.zero(G::GrpAbFinGen) = G[0]
 Base.:-(M::GrpAbFinGenMap) = hom(domain(M), codomain(M), [-M(g) for g = gens(domain(M))], check = false)
 
-function H_two(C::CohomologyModule)
+function H_two(C::GModule)
+  z = AbstractAlgebra.get_special(C, :H_two)
+  if z !== nothing
+    return domain(z[1]), z[1], z[2]
+  end
   G = Group(C)
   M = Module(C)
   id = hom(M, M, gens(M), check = false)
@@ -627,9 +655,11 @@ function H_two(C::CohomologyModule)
     return true, CoChain{1,elem_type(G),elem_type(M)}(C, Dict([(gen(G, i),) => B_pro[i](b) for i=1:ngens(G)]))
   end
 
-  return H2, MapFromFunc(x->TailToCoChain(mE(preimage(mH2, x))), 
+  z = (MapFromFunc(x->TailToCoChain(mE(preimage(mH2, x))), 
                          y->mH2(preimage(mE, TailFromCoChain(y))), H2, AllCoChains{2,elem_type(G),elem_type(M)}()),
-             iscoboundary
+             iscoboundary)
+  AbstractAlgebra.set_special(C, :H_two => z)
+  return H2, z[1], z[2]
   #now the rest...
   #(g, m)*(h, n) = (gh, m^h+n+gamma(g, h)) where gamma is "the" 2-cocycle
   #using tails:
@@ -652,7 +682,7 @@ For a cohomology module `C` compute the `i`-th cohomology group
 Together with the abstract module, a map is provided that will 
   produce explicit cochains.
 """
-function cohomology_group(C::CohomologyModule{PermGroup,GrpAbFinGen}, i::Int)
+function cohomology_group(C::GModule{PermGroup,GrpAbFinGen}, i::Int)
   #should also allow modules...
   if i==0
     return H_zero(C)
@@ -754,12 +784,12 @@ end
 The natural `ZZ[H]` module where `H`, a subgroup of the
   automorphism group acts on the ray class group.
 """
-function cohomology_module(H::PermGroup, mR::MapRayClassGrp)
+function gmodule(H::PermGroup, mR::MapRayClassGrp)
   k = nf(order(codomain(mR)))
   G, mG = automorphism_group(PermGroup, k)
 
   ac = Hecke.induce_action(mR, [image(mG, G(g)) for g = gens(H)])
-  return CohomologyModule(H, ac)
+  return GModule(H, ac)
 end
 
 """
@@ -768,23 +798,23 @@ group `H`, return the `ZZ[H]` module.
 
 Note: we do not check that this defined indeed a `ZZ[H]` module.
 """
-function cohomology_module(H::PermGroup, ac::Vector{<:Map})
-  return CohomologyModule(H, ac)
+function gmodule(H::PermGroup, ac::Vector{<:Map})
+  return GModule(H, ac)
 end
 
-function _cohomology_module(k::AnticNumberField, H::PermGroup, mu::Map{GrpAbFinGen, FacElemMon{AnticNumberField}})
+function _gmodule(k::AnticNumberField, H::PermGroup, mu::Map{GrpAbFinGen, FacElemMon{AnticNumberField}})
   u = domain(mu)
   U = [mu(g) for g = gens(u)]
   G, mG = automorphism_group(PermGroup, k)
   ac = [hom(u, u, [preimage(mu, mG(g)(x)) for x = U]) for g = gens(H)]
-  return cohomology_module(H, ac)
+  return gmodule(H, ac)
 end
 
-function cohomology_module(H::PermGroup, mu::Map{GrpAbFinGen, FacElemMon{AnticNumberField}})
-  return _cohomology_module(base_ring(codomain(mu)), H, mu)
+function gmodule(H::PermGroup, mu::Map{GrpAbFinGen, FacElemMon{AnticNumberField}})
+  return _gmodule(base_ring(codomain(mu)), H, mu)
 end
 
-function cohomology_module(H::PermGroup, mu::Hecke.MapUnitGrp{NfOrd})
+function gmodule(H::PermGroup, mu::Hecke.MapUnitGrp{NfOrd})
   #TODO: preimage for sunits can fail (inf. loop) if
   # (experimentally) the ideals in S are not coprime ar include 1
   # or if the s-unit is not in the image (eg. action and not closed set S)
@@ -794,11 +824,11 @@ function cohomology_module(H::PermGroup, mu::Hecke.MapUnitGrp{NfOrd})
   k = nf(zk)
   G, mG = automorphism_group(PermGroup, k)
   ac = [hom(u, u, [preimage(mu, zk(mG(g)(k(x)))) for x = U]) for g = gens(H)]
-  return cohomology_module(H, ac)
+  return gmodule(H, ac)
 end
 
-function cohomology_module(H::PermGroup, mu::Map{GrpAbFinGen, AnticNumberField})
-  return _cohomology_module(codomain(mu), H, mu)
+function gmodule(H::PermGroup, mu::Map{GrpAbFinGen, AnticNumberField})
+  return _gmodule(codomain(mu), H, mu)
 end
 
 function iscoboundary(c::CoChain{2,PermGroupElem,nf_elem})
@@ -838,7 +868,7 @@ function iscoboundary(c::CoChain{2,PermGroupElem,nf_elem})
   else
     u, mu = Hecke.sunit_group_fac_elem(collect(S))
   end
-  C = cohomology_module(Group(c.C), mu)
+  C = gmodule(Group(c.C), mu)
   _, _, z = cohomology_group(C, 2)
   cc = CoChain{2,PermGroupElem,GrpAbFinGenElem}(C, Dict((h, preimage(mu, v)) for (h,v) = c.d))
   fl, d = z(cc)
@@ -872,9 +902,12 @@ function local_cohomology_easy(A::ClassField, p::NfOrdIdl)
   =#
 end
 
-export cohomology_module, word, fp_group, confluent_fp_group, relations,
+export GModule, gmodule, word, fp_group, confluent_fp_group, relations,
        action, cohomology_group, extension, iscoboundary
 
+Oscar.dim(C::GModule) = rank(C.M)
+Oscar.base_ring(C::GModule) = base_ring(C.M)
+Oscar.group(C::GModule) = C.G
 
 #= TODO
   for Z, Z/nZ, F_p and F_q moduln -> find Fp-presentation
@@ -889,7 +922,7 @@ Sort:
  - move (and fix) the ModuleHom stuff
  - add proper quo for Modules
 
-  group better: the CohomologyModule should
+  group better: the GModule should
    - cache the H^i's that are computed
 
   features   
@@ -906,7 +939,7 @@ Sort:
      rather than the RWS (or use BSGS to get an RWS?)
 
 
-  CohomologyModule for 
+  GModule for 
     - local field (add (trivial) and mult)
     - (S-)units
     - Ali's stuff....
@@ -915,3 +948,5 @@ Sort:
 end # module GrpCoh
 
 using .GrpCoh
+export gmodule, GModule
+
