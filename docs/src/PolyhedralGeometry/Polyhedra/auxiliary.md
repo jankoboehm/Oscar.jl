@@ -10,45 +10,67 @@ using Oscar
 Pages = ["auxiliary.md"]
 ```
 
-
 # Auxiliary functions
 
+## Geometric data
+
 ```@docs
-affine_hull(P::Polyhedron)
-ambient_dim(P::Polyhedron)
-boundary_lattice_points(P::Polyhedron)
-codim(P::Polyhedron)
-contains(P::Polyhedron, v::AbstractVector)
-dim(P::Polyhedron)
 facets(P::Polyhedron)
-f_vector(P::Polyhedron)
-interior_lattice_points(P::Polyhedron)
+vertices(P::Polyhedron)
+rays(P::Polyhedron)
+affine_hull(P::Polyhedron{T}) where T<:scalar_types
+ambient_dim(P::Polyhedron)
+dim(P::Polyhedron)
+codim(P::Polyhedron)
 isbounded(P::Polyhedron)
 isfeasible(P::Polyhedron)
 isfulldimensional(P::Polyhedron)
-isnormal(P::Polyhedron)
-issmooth(P::Polyhedron)
-lattice_points(P::Polyhedron)
-lattice_volume(P::Polyhedron)
 lineality_dim(P::Polyhedron)
-lineality_space(P::Polyhedron)
+lineality_space(P::Polyhedron{T}) where T<:scalar_types
+recession_cone(P::Polyhedron{T}) where T<:scalar_types
+relative_interior_point(P::Polyhedron{T}) where T<:scalar_types
+```
+
+## Combinatorial data
+
+```@docs
 nfacets(P::Polyhedron)
-normalized_volume(P::Polyhedron)
 nvertices(P::Polyhedron)
-polarize(P::Polyhedron)
-project_full(P::Polyhedron)
+f_vector(P::Polyhedron)
+g_vector(P::Polyhedron)
+h_vector(P::Polyhedron)
+```
+
+## Other
+
+```@docs
+all_triangulations
+boundary_lattice_points(P::Polyhedron{fmpq})
+contains(P::Polyhedron, v::AbstractVector)
+ehrhart_polynomial(P::Polyhedron{fmpq})
+ehrhart_polynomial(R::FmpqPolyRing, P::Polyhedron{fmpq})
+h_star_polynomial(P::Polyhedron{fmpq})
+h_star_polynomial(R::FmpqPolyRing, P::Polyhedron{fmpq})
+interior_lattice_points(P::Polyhedron{fmpq})
+isnormal(P::Polyhedron{fmpq})
+issimple(P::Polyhedron)
+issmooth(P::Polyhedron{fmpq})
+is_very_ample(P::Polyhedron{fmpq})
+lattice_points(P::Polyhedron{fmpq})
+lattice_volume(P::Polyhedron{fmpq})
+normalized_volume(P::Polyhedron{T}) where T<:scalar_types
+polarize(P::Polyhedron{T}) where T<:scalar_types
+project_full(P::Polyhedron{T}) where T<:scalar_types
 print_constraints(A::AnyVecOrMat, b::AbstractVector; trivial::Bool = false)
 print_constraints(P::Polyhedron; trivial::Bool = false)
-rays(P::Polyhedron)
-recession_cone(P::Polyhedron)
-relative_interior_point(P::Polyhedron)
+regular_triangulations
+secondary_polytope
 solve_ineq(A::fmpz_mat, b::fmpz_mat)
 solve_mixed(A::fmpz_mat, b::fmpz_mat, C::fmpz_mat, d::fmpz_mat)
 solve_mixed(A::fmpz_mat, b::fmpz_mat, C::fmpz_mat)
 solve_non_negative(A::fmpz_mat, b::fmpz_mat)
-support_function(P::Polyhedron; convention::Symbol = :max)
-vertices(P::Polyhedron)
-volume(P::Polyhedron)
+support_function(P::Polyhedron{T}; convention::Symbol = :max) where T<:scalar_types
+volume(P::Polyhedron{T}) where T<:scalar_types
 ```
 
 

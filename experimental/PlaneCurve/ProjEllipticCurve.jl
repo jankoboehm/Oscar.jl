@@ -174,7 +174,7 @@ mutable struct ProjEllipticCurve{S} <: ProjectivePlaneCurve{S}
   degree::Int
   components::Dict{ProjEllipticCurve{S}, Int}
   point::Oscar.Geometry.ProjSpcElem{S}
-  maps::Vector{Oscar.AlgHom{S}}
+  maps
   Hecke_ec::EllCrv{S}
 
   function ProjEllipticCurve{S}(eq::Oscar.MPolyElem_dec{S}) where {S <: FieldElem}
@@ -398,8 +398,8 @@ end
 
 ################################################################################
 
-function _image_point(phi::Oscar.AlgHom{S}, V::Vector{S}) where S <: FieldElem
-   return [evaluate(phi.image[i], V) for i in 1:3]
+function _image_point(phi, V::Vector{S}) where S <: FieldElem
+   return [evaluate(Oscar._images(phi)[i], V) for i in 1:3]
 end
 
 ################################################################################
@@ -709,7 +709,7 @@ end
 @doc Markdown.doc"""
     order(P::Point_EllCurve{fmpq})
 
-Returns the order of the point `P` or `0` if the order is infinite.
+Return the order of the point `P` or `0` if the order is infinite.
 """
 function Oscar.order(P::Point_EllCurve{fmpq})
    return Hecke.order(P.Hecke_Pt)
@@ -720,7 +720,7 @@ end
 @doc Markdown.doc"""
     istorsion_point(P::Point_EllCurve{fmpq})
 
-Returns whether the point `P` is a torsion point.
+Return whether the point `P` is a torsion point.
 """
 function Oscar.istorsion_point(P::Point_EllCurve{fmpq})
    return Hecke.istorsion_point(P.Hecke_Pt)
@@ -730,7 +730,7 @@ end
 @doc Markdown.doc"""
     torsion_points_lutz_nagell(E::ProjEllipticCurve{fmpq})
 
-Computes the rational torsion points of the elliptic curve `E` using the
+Return the rational torsion points of the elliptic curve `E` using the
 Lutz-Nagell theorem.
 """
 function Oscar.torsion_points_lutz_nagell(E::ProjEllipticCurve{fmpq})
@@ -745,7 +745,7 @@ end
 @doc Markdown.doc"""
     torsion_points_division_poly(E::ProjEllipticCurve{fmpq})
 
-Computes the rational torsion points of a rational elliptic curve `E` using
+Return the rational torsion points of a rational elliptic curve `E` using
 division polynomials.
 """
 function Oscar.torsion_points_division_poly(E::ProjEllipticCurve{fmpq})

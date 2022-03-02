@@ -21,14 +21,21 @@ See [Fau99](@cite) for more information.
 
 # Examples
 ```jldoctest
-julia> R,(x,y,z) = PolynomialRing(FiniteField(101), ["x","y","z"])
+julia> R,(x,y,z) = PolynomialRing(GF(101), ["x","y","z"], ordering=:degrevlex)
 (Multivariate Polynomial Ring in x, y, z over Galois field with characteristic 101, gfp_mpoly[x, y, z])
 
 julia> I = ideal(R, [x+2*y+2*z-1, x^2+2*y^2+2*z^2-x, 2*x*y+2*y*z-y])
-ideal(x + 2*y + 2*z + 100, x^2 + 100*x + 2*y^2 + 2*z^2, 2*x*y + 2*y*z + 100*y)
+ideal(x + 2*y + 2*z + 100, x^2 + 2*y^2 + 2*z^2 + 100*x, 2*x*y + 2*y*z + 100*y)
 
 julia> f4(I)
-Oscar.BiPolyArray{gfp_mpoly}(gfp_mpoly[#undef, #undef, #undef, #undef], Singular ideal over Singular Polynomial Ring (ZZ/101),(x,y,z),(dp(3),C) with generators (x + 2*y + 2*z - 1, y*z - 19*z^2 + 10*y + 40*z, y^2 - 41*z^2 + 20*y - 20*z, z^3 + 28*z^2 - 37*y + 13*z), Multivariate Polynomial Ring in x, y, z over Galois field with characteristic 101, Singular Polynomial Ring (ZZ/101),(x,y,z),(dp(3),C), true, #undef)
+4-element Vector{gfp_mpoly}:
+ x + 2*y + 2*z + 100
+ y*z + 82*z^2 + 10*y + 40*z
+ y^2 + 60*z^2 + 20*y + 81*z
+ z^3 + 28*z^2 + 64*y + 13*z
+
+julia> isdefined(I, :gb)
+true
 ```
 """
 function f4(
@@ -41,27 +48,20 @@ function f4(
         info_level::Int=0
         )
 
-    singular_assure(I)
-    SI    = I.gens.S
-    R     = I.gens.Sx
-    # skip zero generators in ideal
-    ptr = Singular.libSingular.id_Copy(SI.ptr, R.ptr)
-    J   = Singular.Ideal(R, ptr)
-    Singular.libSingular.idSkipZeroes(J.ptr)
-    # get number of variables
-    nr_vars = Singular.nvars(R)
-    nr_gens = Singular.ngens(J)
+    R = base_ring(I)
+    nr_vars     = nvars(R)
+    nr_gens     = ngens(I)
+    field_char  = Int(characteristic(R))
 
     mon_order       = 0
     elim_block_size = 0
-    field_char  = Singular.characteristic(R)
 
-    # convert Singular ideal to flattened arrays of ints
+    # convert ideal to flattened arrays of ints
     if !(isprime(field_char))
         error("At the moment f4 only supports finite fields.")
     end
 
-    lens, cfs, exps = convert_singular_ideal_to_array(J)
+    lens, cfs, exps = convert_oscar_ideal_to_array(I)
 
     gb_ld  = Ref(Cint(0))
     gb_len = Ref(Ptr{Cint}(0))
@@ -70,8 +70,8 @@ function f4(
 
     nr_terms  = ccall((:f4_julia, libneogb), Int,
         (Ptr{Nothing}, Ptr{Cint}, Ptr{Ptr{Cint}}, Ptr{Ptr{Cint}}, Ptr{Ptr{Cvoid}},
-        Ptr{Cint}, Ptr{Cint}, Ptr{Cvoid}, Int, Int, Int, Int, Int, Int,
-        Int, Int, Int, Int, Int, Int, Int),
+        Ptr{Cint}, Ptr{Cint}, Ptr{Cvoid}, Cint, Cint, Cint, Cint, Cint, Cint,
+        Cint, Cint, Cint, Cint, Cint, Cint, Cint),
         cglobal(:jl_malloc), gb_ld, gb_len, gb_exp, gb_cf, lens, exps, cfs,
         field_char, mon_order, elim_block_size, nr_vars, nr_gens, initial_hts,
         nr_thrds, max_nr_pairs, 0, la_option, reduce_gb, 0, info_level)
@@ -79,6 +79,7 @@ function f4(
     if nr_terms == 0
         error("Something went wrong in the C code of F4.")
     end
+
     # convert to julia array, also give memory management to julia
     jl_ld   = gb_ld[]
     jl_len  = Base.unsafe_wrap(Array, gb_len[], jl_ld)
@@ -91,22 +92,14 @@ function f4(
         jl_cf = Base.unsafe_wrap(Array, ptr, nr_terms)
     end
 
-    # construct Singular ideal
-    # if 0 == field_char
-    #     basis = convert_qq_gb_array_to_singular_ideal(
-    #       jl_ld, jl_len, jl_cf, jl_exp, R)
-    # else
-        basis = convert_ff_gb_array_to_singular_ideal(
-          jl_ld, jl_len, jl_cf, jl_exp, R)
-    # end
+    basis = convert_ff_gb_array_to_oscar_array(
+                jl_ld, jl_len, jl_cf, jl_exp, base_ring(I))
     ccall((:free_f4_julia_result_data, libneogb), Nothing ,
           (Ptr{Nothing}, Ptr{Ptr{Cint}}, Ptr{Ptr{Cint}},
            Ptr{Ptr{Cvoid}}, Int, Int),
           cglobal(:jl_free), gb_len, gb_exp, gb_cf, jl_ld, field_char)
 
-    I.gb        = BiPolyArray(base_ring(I), basis)
-    I.gb.isGB   = true
-    I.gb.S.isGB = true
+    I.gb[degrevlex(gens(R))] = BiPolyArray(basis, keep_ordering=false, isGB=true)
     
-    return I.gb
+    return basis
 end

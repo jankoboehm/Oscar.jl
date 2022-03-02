@@ -40,15 +40,16 @@ NormalToricVariety(P::Polyhedron)
 ### Famous Toric Vareties
 
 ```@docs
+affine_space(::Type{NormalToricVariety}, d::Int)
 del_pezzo(b::Int)
 hirzebruch_surface(r::Int)
-toric_projective_space(d::Int)
+projective_space(::Type{NormalToricVariety}, d::Int)
 ```
 
 ### Further Constructions
 
 ```@docs
-blowup_on_ith_minimal_torus_orbit(v::AbstractNormalToricVariety, n::Int)
+blowup_on_ith_minimal_torus_orbit(v::AbstractNormalToricVariety, n::Int, coordinate_name::String)
 Base.:*(v::AbstractNormalToricVariety, w::AbstractNormalToricVariety)
 ```
 
@@ -66,8 +67,8 @@ issmooth(v::AbstractNormalToricVariety)
 isnormal(v::AbstractNormalToricVariety)
 isorbifold(v::AbstractNormalToricVariety)
 isprojective(v::AbstractNormalToricVariety)
-isprojective_space(v::AbstractNormalToricVariety)
-isq_gorenstein(v::AbstractNormalToricVariety)
+is_projective_space(v::AbstractNormalToricVariety)
+is_q_gorenstein(v::AbstractNormalToricVariety)
 ```
 
 
@@ -82,14 +83,15 @@ affine_open_covering( v::AbstractNormalToricVariety )
 ### Characters, Weil Divisors, Cartier Divisors, Class Group and Picard Group
 
 ```@docs
-cartier_divisor_group(v::AbstractNormalToricVariety)
+torusinvariant_cartier_divisor_group(v::AbstractNormalToricVariety)
 character_lattice(v::AbstractNormalToricVariety)
 class_group(v::AbstractNormalToricVariety)
-map_from_cartier_divisor_group_to_torus_invariant_divisor_group(v::AbstractNormalToricVariety)
-map_from_character_to_principal_divisors(v::AbstractNormalToricVariety)
-map_from_weil_divisors_to_class_group(v::AbstractNormalToricVariety)
+map_from_torusinvariant_cartier_divisor_group_to_torusinvariant_weil_divisor_group(v::AbstractNormalToricVariety)
+map_from_torusinvariant_cartier_divisor_group_to_picard_group(v::AbstractNormalToricVariety)
+map_from_character_lattice_to_torusinvariant_weil_divisor_group(v::AbstractNormalToricVariety)
+map_from_torusinvariant_weil_divisor_group_to_class_group(v::AbstractNormalToricVariety)
 picard_group(v::AbstractNormalToricVariety)
-torusinvariant_divisor_group(v::AbstractNormalToricVariety)
+torusinvariant_weil_divisor_group(v::AbstractNormalToricVariety)
 torusinvariant_prime_divisors(v::AbstractNormalToricVariety)
 ```
 
@@ -108,22 +110,57 @@ nef_cone(v::NormalToricVariety)
 dim(v::AbstractNormalToricVariety)
 dim_of_torusfactor(v::AbstractNormalToricVariety)
 euler_characteristic(v::AbstractNormalToricVariety)
-ith_betti_number(v::AbstractNormalToricVariety, i::Int)
+betti_number(v::AbstractNormalToricVariety, i::Int)
 ```
+
+### Coefficient ring and coordinate names
+
+We support the Cox ring (also termed the "total coordinate ring" in [CLS11](@cite)) and the following ideals:
+- `irrelevant ideal`,
+- `Stanley-Reisner ideal`
+For their computation, names for the indeterminates of the Cox ring must be chosen.
+The user is free to change these until the Cox ring is computed for the first time.
+
+```@docs
+coordinate_names(v::AbstractNormalToricVariety)
+set_coordinate_names(v::AbstractNormalToricVariety, coordinate_names::Vector{String})
+```
+
+Likewise, a coefficient ring for the Cox ring must be chosen. The user can change 
+it until either the Cox ring or the toric ideal is computed for the first time.
+
+```@docs
+coefficient_ring(v::AbstractNormalToricVariety)
+set_coefficient_ring(v::AbstractNormalToricVariety, coefficient_ring::AbstractAlgebra.Ring)
+```
+
+If no choice is made, we invoke the following default values:
+- `coefficient_ring` is chosen as the field of rational numbers,
+- `coordinate_names` is chosen as `[x1, x2, ... ]`.
+
 
 ### Rings and ideals
 
 ```@docs
 cox_ring(v::AbstractNormalToricVariety)
+cox_ring(R::MPolyRing, v::AbstractNormalToricVariety)
 irrelevant_ideal(v::AbstractNormalToricVariety)
+irrelevant_ideal(R::MPolyRing, v::AbstractNormalToricVariety)
 stanley_reisner_ideal(v::AbstractNormalToricVariety)
+stanley_reisner_ideal(R::MPolyRing, v::AbstractNormalToricVariety)
 toric_ideal(antv::AffineNormalToricVariety)
+toric_ideal(R::MPolyRing, antv::AffineNormalToricVariety)
 ```
 
+### Sheaves
+
+```@docs
+StructureSheaf(v::AbstractNormalToricVariety)
+```
 
 ## Auxillary Methods
 
 ```@docs
 binomial_exponents_to_ideal(binoms::Union{AbstractMatrix, fmpz_mat})
-toric_ideal(pts::Union{AbstractMatrix, fmpz_mat})
+toric_ideal(pts::fmpz_mat)
 ```

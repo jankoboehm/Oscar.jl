@@ -1,61 +1,6 @@
-import Hecke:
-    abelian_group,
-    automorphism_group,
-    center,
-    codomain,
-    cokernel,
-    compose,
-    degree,
-    derived_series,
-    direct_product,
-    domain,
-    elem_type,
-    elements,
-    free_abelian_group,
-    gen,
-    gens,
-    haspreimage,
-    hom,
-    id_hom,
-    image,
-    index,
-    inv!,
-    isabelian,
-    isbijective,
-    ischaracteristic,
-    isconjugate,
-    iscyclic,
-    isinjective,
-    isinvertible,
-    isisomorphic,
-    isnormal,
-    issimple,
-    issubgroup,
-    issurjective,
-    kernel,
-    Map,
-    mul,
-    mul!,
-    ngens,
-    normal_closure,
-    one!,
-    order,
-    parent_type,
-    perm,
-    preimage,
-    quo,
-    representative,
-    SetMap,
-    small_group,
-    sub,
-    subgroups
-
-import Base: ==, parent, show
-
-import GAP: GapObj, GapInt
-
 export
     AutomorphismGroup,
+    AutomorphismGroupElem,
     DirectProductGroup,
     DirectProductOfElem,
     FPGroup,
@@ -116,6 +61,11 @@ struct BasicGAPGroupElem{T<:GAPGroup} <: GAPGroupElem{T}
    X::GapObj
 end
 
+function Base.deepcopy_internal(x::BasicGAPGroupElem, dict::IdDict)
+  X = Base.deepcopy_internal(x.X, dict)
+  return BasicGAPGroupElem(x.parent, X)
+end
+
 Base.hash(x::GAPGroup, h::UInt) = h # FIXME
 Base.hash(x::GAPGroupElem, h::UInt) = h # FIXME
 
@@ -134,20 +84,25 @@ Every group of this type is the subgroup of Sym(n) for some n.
   the dihedral group of order `n` as a group of permutations.
   Same holds replacing `dihedral_group` by `quaternion_group`
 """
-mutable struct PermGroup <: GAPGroup
+@attributes mutable struct PermGroup <: GAPGroup
    X::GapObj
    deg::Int64       # G < Sym(deg)
-   AbstractAlgebra.@declare_other
    
    function PermGroup(G::GapObj)
-     @assert GAP.Globals.IsPermGroup(G)
-     n = GAP.Globals.LargestMovedPoint(G)::Int
+     @assert GAPWrap.IsPermGroup(G)
+     n = GAPWrap.LargestMovedPoint(G)::Int
+     if n == 0
+       # We support only positive degrees.
+       # (`symmetric_group(0)` yields an error,
+       # and `symmetric_group(1)` yields a GAP group with `n == 0`.)
+       n = 1
+     end
      z = new(G, n)
      return z
    end
    
    function PermGroup(G::GapObj, deg::Int)
-     @assert GAP.Globals.IsPermGroup(G)
+     @assert GAPWrap.IsPermGroup(G) && deg > 0 && deg >= GAPWrap.LargestMovedPoint(G)::Int
      z = new(G, deg)
      return z
    end
@@ -175,12 +130,11 @@ Polycyclic group
   direct product of cyclic groups of the orders
   `v[1]`, `v[2]`, ..., `v[length(v)]`
 """
-mutable struct PcGroup <: GAPGroup
+@attributes mutable struct PcGroup <: GAPGroup
   X::GapObj
-  AbstractAlgebra.@declare_other
 
   function PcGroup(G::GapObj)
-    @assert GAP.Globals.IsPcGroup(G)
+    @assert GAPWrap.IsPcGroup(G)
     z = new(G)
     return z
   end
@@ -200,12 +154,11 @@ Finitely presented group.
 Such groups can be constructed a factors of free groups,
 see [`free_group`](@ref).
 """
-mutable struct FPGroup <: GAPGroup
+@attributes mutable struct FPGroup <: GAPGroup
   X::GapObj
-  AbstractAlgebra.@declare_other
   
   function FPGroup(G::GapObj)
-    @assert GAP.Globals.IsSubgroupFpGroup(G)
+    @assert GAPWrap.IsSubgroupFpGroup(G)
     z = new(G)
     return z
   end
@@ -215,6 +168,34 @@ end
 TODO: document this
 """
 const FPGroupElem = BasicGAPGroupElem{FPGroup}
+
+
+################################################################################
+#
+# Construct an Oscar group wrapping the GAP group `obj`
+# *and* compatible with a given Oscar group `G`.
+
+# default: ignore `G`
+_oscar_group(obj::GapObj, G::T) where T <: GAPGroup = T(obj)
+
+# `PermGroup`: set the degree of `G`
+function _oscar_group(obj::GapObj, G::PermGroup)
+  n = GAP.Globals.LargestMovedPoint(obj)
+  N = degree(G)
+  n <= N || error("requested degree ($N) is smaller than the largest moved point ($n)")
+  return PermGroup(obj, N)
+end
+
+# `MatrixGroup`: set dimension and ring of `G`
+# (This cannot be defined here because `MatrixGroup` is not yet defined.)
+
+
+################################################################################
+#
+# "Coerce" an Oscar group `G` to one that is compatible with
+# the given Oscar group `S`.
+compatible_group(G::T, S::T) where T <: GAPGroup = _oscar_group(G.X, S)
+
 
 ################################################################################
 #
@@ -228,24 +209,41 @@ struct GAPGroupHomomorphism{S<: GAPGroup, T<: GAPGroup} <: Map{S,T,GAPMap,GAPGro
    domain::S
    codomain::T
    map::GapObj
+
+   function GAPGroupHomomorphism(G::S, H::T, mp::GapObj) where {S<: GAPGroup, T<: GAPGroup}
+     return new{S, T}(G, H, mp)
+   end
 end
+
 
 """
     AutomorphismGroup{T} <: GAPGroup
 
 Group of automorphisms over a group of type `T`. It can be defined via the function `automorphism_group`.
 """
-mutable struct AutomorphismGroup{T} <: GAPGroup
+@attributes mutable struct AutomorphismGroup{T} <: GAPGroup
   X::GapObj
   G::T
-  AbstractAlgebra.@declare_other
 
   function AutomorphismGroup{T}(G::GapObj, H::T) where T
-    @assert GAP.Globals.IsGroupOfAutomorphisms(G)
+    @assert GAPWrap.IsGroupOfAutomorphisms(G)
     z = new{T}(G, H)
     return z
   end
 end
+
+function AutomorphismGroup(G::GapObj, H::T) where T
+  return AutomorphismGroup{T}(G, H)
+end
+
+(aut::AutomorphismGroup{T} where T)(x::GapObj) = group_element(aut,x)
+
+const AutomorphismGroupElem{T} = BasicGAPGroupElem{AutomorphismGroup{T}} where T
+
+function Base.show(io::IO, AGE::AutomorphismGroupElem{GrpAbFinGen}) 
+    println(io, "Automorphism of ", GrpAbFinGen, " with matrix representation ", matrix(AGE))
+end
+
 
 ################################################################################
 #
@@ -329,7 +327,21 @@ const _gap_group_types = Tuple{GAP.GapObj, Type}[]
 function _get_type(G::GapObj)
   for pair in _gap_group_types
     if pair[1](G)
-      return pair[2]
+      if pair[2] == MatrixGroup
+#T HACK: We need more information in the case of matrix groups.
+#T (Usually we should not need to guess the Oscar side of a GAP group.)
+        return function(dom::GAP.GapObj)
+                 deg = GAP.Globals.DimensionOfMatrixGroup(dom)
+                 iso = iso_gap_oscar(GAP.Globals.FieldOfMatrixGroup(dom))
+                 ring = codomain(iso)
+                 matgrp = MatrixGroup(deg, ring)
+                 matgrp.ring_iso = inv(iso)
+                 matgrp.X = dom
+                 return matgrp
+               end
+      else
+        return pair[2]
+      end
     end
   end
   error("Not a known type of group")

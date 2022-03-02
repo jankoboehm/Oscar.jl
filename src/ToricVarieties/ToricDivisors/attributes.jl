@@ -13,10 +13,10 @@ the other moves it across. In the latter case there are no global sections
 anymore and the polyhedron becomes empty.
 ```
 julia> H = hirzebruch_surface(4)
-A normal toric variety corresponding to a polyhedral fan in ambient dimension 2
+A normal, non-affine, smooth, projective, gorenstein, non-fano, 2-dimensional toric variety without torusfactor
 
 julia> td0 = ToricDivisor(H, [0,0,0,0])
-A torus invariant divisor on a normal toric variety
+A torus-invariant, non-prime divisor on a normal toric variety
 
 julia> isfeasible(polyhedron(td0))
 true
@@ -25,22 +25,19 @@ julia> dim(polyhedron(td0))
 0
 
 julia> td1 = ToricDivisor(H, [1,0,0,0])
-A torus invariant divisor on a normal toric variety
+A torus-invariant, prime divisor on a normal toric variety
 
 julia> isfeasible(polyhedron(td1))
 true
 
 julia> td2 = ToricDivisor(H, [-1,0,0,0])
-A torus invariant divisor on a normal toric variety
+A torus-invariant, non-prime divisor on a normal toric variety
 
 julia> isfeasible(polyhedron(td2))
 false
 ```
 """
-function polyhedron(td::ToricDivisor)
-    pmtd = pm_tdivisor(td)
-    return Polyhedron(pmtd.SECTION_POLYTOPE)
-end
+@attr Polyhedron polyhedron(td::ToricDivisor) = Polyhedron(pm_tdivisor(td).SECTION_POLYTOPE)
 export polyhedron
 
 
@@ -52,13 +49,13 @@ Identify the coefficients of a toric divisor in the group of torus invariant Wei
 # Examples
 ```
 julia> H = hirzebruch_surface(4)
-A normal toric variety corresponding to a polyhedral fan in ambient dimension 2
+A normal, non-affine, smooth, projective, gorenstein, non-fano, 2-dimensional toric variety without torusfactor
 
 julia> D = ToricDivisor(H, [1,2,3,4])
-A torus invariant divisor on a normal toric variety
+A torus-invariant, non-prime divisor on a normal toric variety
 
 julia> coefficients(D)
-4-element Vector{Int64}:
+4-element Vector{fmpz}:
  1
  2
  3
@@ -66,6 +63,17 @@ julia> coefficients(D)
 ```
 """
 function coefficients(td::ToricDivisor)
-    return Vector{Int}(Polymake.common.primitive(pm_tdivisor(td).COEFFICIENTS))
+    return td.coeffs
 end
 export coefficients
+
+
+@doc Markdown.doc"""
+    toric_variety(td::ToricDivisor)
+
+Return the toric variety of a torus-invariant Weil divisor.
+"""
+function toric_variety(td::ToricDivisor)
+    return td.toric_variety
+end
+export toric_variety

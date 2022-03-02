@@ -25,6 +25,14 @@ end
 	F = FreeMod(R,3)
 	v = [x, x^2*y+z^3, R(-1)]
 	@test v == Vector(F(v))
+
+	M = sub(F, [F(v), F([z, R(1), R(0)])])
+	N = quo(M, [SubQuoElem([x+y^2, y^3*z^2+1], M)])
+	AN, ai = ambient_module(N, :with_morphism)
+	@test AN.quo === N.quo
+	for i=1:ngens(N)
+		@test AN(repres(N[i])) == ai(N[i])
+	end
 end
 
 @testset "Intersection of modules" begin
@@ -60,6 +68,19 @@ end
   @test iswelldefined(i)
   @test isinjective(i)
   @test SubQuo(F2, A2, B1) == P
+
+  #Test that no obvious zeros are in the generator set
+  F = free_module(R,1)
+  AM = R[x;]
+  BM = R[x^2; y^3; z^4]
+  M = SubQuo(F, AM, BM)
+  AN = R[y;]
+  BN = R[x^2; y^3; z^4]
+  N = SubQuo(F, AN, BN)
+  P,_ = intersect(M, N)
+  for g in gens(P)
+	@test !iszero(ambient_representative(g))
+  end
 end
 
 @testset "Presentation" begin
@@ -102,6 +123,10 @@ end
 		@test isbijective(i)
 		@test isbijective(p)
 	end
+end
+
+
+@testset "Gröbner bases" begin
 end
 
 
@@ -234,7 +259,7 @@ end
   F3 = FreeMod(R,3)
   M1 = SubQuo(F3,R[x^2*y^3-x*y y^3 x^2*y; 2*x^2 3*y^2*x 4],R[x^4*y^5 x*y y^4])
   N1 = SubQuo(F3,R[x^4*y^5-4*x^2 x*y-6*y^2*x y^4-8],R[x^4*y^5 x*y y^4])
-  Q1,p1 = quo(M1,N1,:store)
+  Q1,p1 = quo(M1,N1,:cache_morphism)
 
   @test Q1 == SubQuo(F3,R[x^2*y^3-x*y y^3 x^2*y],R[x^4*y^5 x*y y^4; x^4*y^5-4*x^2  -6*x*y^2+x*y  y^4-8])
   for k=1:5
@@ -245,7 +270,7 @@ end
   F2 = FreeMod(R,2)
   M2 = SubQuo(F2,R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],R[x^3-y^2 y^4-x-y])
   elems = [SubQuoElem(sparse_row(R[x*y -x*y^2 x*y]), M2), SubQuoElem(sparse_row(R[x R(0) R(-1)]), M2)]
-  Q2,p2 = quo(M2,elems,:store)
+  Q2,p2 = quo(M2,elems,:cache_morphism)
 
   @test Q2 == SubQuo(F2,R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],
             R[x^3-y^2 y^4-x-y; x^2*y^3+x^2*y^2+x^3*y^3+x*y^3-x^5*y^2 x^4*y+2*x*y^2-x*y^5+x^2*y^2; x^2*y-y^2 x^4+x*y])
@@ -257,7 +282,7 @@ end
   M3 = SubQuo(F3,R[x^2*y+13*x*y+2x-1 x^4 2*x*y; y^4 3*x -1],R[y^2 x^3 y^2])
   #N3 = SubQuo(F3,R[x^2*y+13*x*y+2x-1-x*y^2 0 x^4-x*y^2; y^4-x*y^2 3*x-x^4 -1-x*y^2],R[2*y^2 2*x^3 2*y^2])
   N3 = SubQuo(F3,R[x^2*y+13*x*y+2x-1-x*y^2 0 2*x*y-x*y^2; y^4-x*y^2 3*x-x^4 -1-x*y^2],R[2*y^2 2*x^3 2*y^2])
-  Q3,p3 = quo(M3,N3,:store)
+  Q3,p3 = quo(M3,N3,:cache_morphism)
 
   @test iszero(quo(M3,M3))
   @test iszero(Q3)
@@ -273,7 +298,7 @@ end
 
   F2 = FreeMod(R,2)
   M1 = SubQuo(F2,R[x^2*y+x*y x*y^2-x; x+x*y^2 y^3],R[x^2 y^3-x])
-  S1,i1 = sub(M1, [M1(sparse_row(R[1 1])),M1(sparse_row(R[y -x]))], :store)
+  S1,i1 = sub(M1, [M1(sparse_row(R[1 1])),M1(sparse_row(R[y -x]))], :cache_morphism)
 
   @test S1 == SubQuo(F2,R[x*y^2+x^3-x^2 x*y^3-x*y-x^2; x^2*y+x*y^2+x*y-x^2+x x*y^2],R[x^2 y^3-x])
   for k=1:5
@@ -282,7 +307,7 @@ end
   end
 
   M2 = SubQuo(F2,R[x*y^2+x*y x^3+2*y; x^4 y^3; x^2*y^2+y^2 x*y],R[x^3-y^2 y^4-x-y])
-  S2,i2 = sub(M2,[M2(sparse_row(R[x*y -x*y^2 x*y])),M2(sparse_row(R[x 0 -1]))], :store)
+  S2,i2 = sub(M2,[M2(sparse_row(R[x*y -x*y^2 x*y])),M2(sparse_row(R[x 0 -1]))], :cache_morphism)
 
   @test S2 == SubQuo(F2,R[x^2*y^3+x^2*y^2+x^3*y^3+x*y^3-x^5*y^2 x^4*y+2*x*y^2-x*y^5+x^2*y^2; x^2*y-y^2 x^4+x*y],R[x^3-y^2 y^4-x-y])
   for k=1:5
@@ -292,7 +317,7 @@ end
 
   M3 = SubQuo(F2,R[x*y^2 x^3+2*y; x^4 y^3; x*y+y^2 x*y],R[x^3-y^2 y^4-x-y])
   elems = [M3(sparse_row(R[0 6 0])),M3(sparse_row(R[9 0 -x])),M3(sparse_row(R[0 0 -42]))]
-  S3,i3 = sub(M3,elems,:store)
+  S3,i3 = sub(M3,elems,:cache_morphism)
 
   @test S3 == M3
   for k=1:5
@@ -303,8 +328,8 @@ end
 
 @testset "Hom module" begin
 	R, (x0,x1,x2,x3,x4,x5) = PolynomialRing(QQ, ["x0", "x1", "x2", "x3", "x4", "x5"])
-	f1=R[-x2*x3 -x4*x5 0; x0*x1 0 -x4*x5; 0 x0*x1 -x2*x3]'
-	g1=R[x0*x1 x2*x3 x4*x5]'
+	f1= transpose(R[-x2*x3 -x4*x5 0; x0*x1 0 -x4*x5; 0 x0*x1 -x2*x3])
+	g1 = transpose(R[x0*x1 x2*x3 x4*x5])
 	M = cokernel(f1)
 	N = cokernel(g1)
 	SQ = hom(M,N)[1]
@@ -331,7 +356,7 @@ end
 			N=free_module_SQ(R,m)
 			SQ = hom(M,N)[1]
 			#SQ = simplify(hom(M,N)[1])[1]
-			@test SQ == free_module_SQ(free_module(SQ))
+			@test SQ == free_module_SQ(ambient_free_module(SQ))
 		end
 	end
 	R, (x,y) = PolynomialRing(QQ, ["x", "y"])
@@ -547,6 +572,10 @@ end
 	F3 = FreeMod(R,3)
 	F4 = FreeMod(R,4)
 	phi = hom(F3,F4, [F4[1],F4[3]+x*F4[4],(x+y)*F4[4]] )
+    z = hom(F3,F4, [zero(F4) for _ in gens(F3)])
+    for v in gens(F3)
+        @test (z-phi)(v) == (-phi)(v)
+    end
 	@test iszero(preimage(phi,zero(F4)))
 	@test phi(preimage(phi,y*(F4[3]+x*F4[4]+(x+y)*F4[3]))) == y*(F4[3]+x*F4[4]+(x+y)*F4[3])
 
@@ -559,7 +588,7 @@ end
 	#1) H: N --> M where N is a cokernel, H should be an isomorphism
 	F2 = FreeMod(R,2)
 	M = SubQuo(F2,A1,B1)
-	N, H = present_as_cokernel(M, :store)
+	N, H = present_as_cokernel(M, :cache_morphism)
 	Hinv = H.inverse_isomorphism
 	@test iswelldefined(H)
 
@@ -567,7 +596,7 @@ end
 	KerH,iKerH = kernel(H)
 	ImH,iImH = image(H)
 
-	NmodKerH, pNmodKerH = quo(N,KerH, :store)
+	NmodKerH, pNmodKerH = quo(N,KerH, :cache_morphism)
 	Hbar = SubQuoHom(NmodKerH,M,matrix(H))
 	Hbar = restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
@@ -595,14 +624,20 @@ end
 
 
 	#2) H: N --> M = N/(submodule of N) canonical projection
-	M,H = quo(N,[N(sparse_row(R[1 x^2-1 x*y^2])),N(sparse_row(R[y^3 y*x^2 x^3]))],:store)
+	M,H = quo(N,[N(sparse_row(R[1 x^2-1 x*y^2])),N(sparse_row(R[y^3 y*x^2 x^3]))],:cache_morphism)
 	@test iswelldefined(H)
+
+    ## test additon/subtraction of morphisms
+    H_1 = H+H-H
+    for v in gens(N)
+        @test H_1(v) == H(v)
+    end
 
 	## testing the homomorphism theorem: #################################
 	KerH,iKerH = kernel(H)
 	ImH,iImH = image(H)
 
-	NmodKerH, pNmodKerH = quo(N,KerH, :store)
+	NmodKerH, pNmodKerH = quo(N,KerH, :cache_morphism)
 	Hbar = SubQuoHom(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 	Hbar = restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
@@ -633,7 +668,7 @@ end
 	u1 = R[3*y 14*y^2 6*x*y^2 x^2*y 3*x^2*y^2]
 	u2 = R[5*x*y^2 10*y^2 4*x*y 7*x^2*y^2 7*x^2]
 	u3 = R[13*x^2*y 4*x*y 2*x 7*x^2 9*x^2]
-	N,iN = sub(NN,[NN(sparse_row(u1)), NN(sparse_row(u2)), NN(sparse_row(u3))], :store)
+	N,iN = sub(NN,[NN(sparse_row(u1)), NN(sparse_row(u2)), NN(sparse_row(u3))], :cache_morphism)
 	
 	H = restrict_domain(p1*iM,N)
 	@test iswelldefined(H)
@@ -642,7 +677,7 @@ end
 	KerH,iKerH = kernel(H)
 	ImH,iImH = image(H)
 
-	NmodKerH, pNmodKerH = quo(N,KerH, :store)
+	NmodKerH, pNmodKerH = quo(N,KerH, :cache_morphism)
 	Hbar = SubQuoHom(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 	Hbar = restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 
@@ -675,7 +710,7 @@ end
 	KerH,iKerH = kernel(H)
 	ImH,iImH = image(H)
 
-	NmodKerH, pNmodKerH = quo(N,KerH, :store)
+	NmodKerH, pNmodKerH = quo(N,KerH, :cache_morphism)
 	Hbar = SubQuoHom(NmodKerH,M,matrix(H)) # induced map N/KerH --> M
 	Hbar = restrict_codomain(Hbar,ImH) # induced map N/KerH --> ImH
 

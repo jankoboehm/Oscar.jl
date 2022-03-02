@@ -1,9 +1,3 @@
-# further possible functions: similar, literal_pow
-
-import Base: ^, Base.Vector
-
-using Random
-
 export GroupConjClass
 
 export
@@ -14,6 +8,7 @@ export
     conjugacy_classes_maximal_subgroups,
     conjugacy_classes_subgroups,
     conjugacy_classes,
+    conjugate_group,
     core,
     coset_decomposition,
     cperm,
@@ -38,7 +33,7 @@ export
     isalmostsimple, hasisalmostsimple, setisalmostsimple,
     isconjugate,
     isfinite, hasisfinite, setisfinite,
-    isfinite_order,
+    isfiniteorder,
     isperfect, hasisperfect, setisperfect,
     ispgroup,
     issimple, hasissimple, setissimple,
@@ -73,8 +68,38 @@ export
 
 group_element(G::T, x::GapObj) where T <: GAPGroup = BasicGAPGroupElem{T}(G, x)
 
+
+#TODO: document `check_parent`!
+# If `check_parent(a, b)` yields `false` then `a` and `b` do not fit
+# together.
+# A `true` result does *not* imply that the objects will fit together,
+# since we check only the Julia side of the data.
+#
+# The current situation is that GAP knows whether an operation for two
+# group elements or for a group and a group element makes sense;
+# for example, think about an element and a subgroup of some f.p. group.
+#
+# The Oscar objects may contain additional information:
+# Oscar permutation groups have a degree, and conjugating a permutation group
+# by an element of another permutation group shall be allowed only if
+# both have the same degree, in order to assign this degree to the result.
+# Analogously, Oscar matrix groups have `deg` and `ring`.
+
+check_parent(g::GAPGroupElem, h::GAPGroupElem) = (parent(g) === parent(h))
+#TODO: Insert such checks in the code, check for failures!
+
+# default: compare only types
+check_parent(G::T, g::GAPGroupElem) where T <: GAPGroup = (T === typeof(g.parent))
+
+# `PermGroup`: compare types and degrees
+check_parent(G::PermGroup, g::PermGroupElem) = (degree(G) == degree(parent(g)))
+
+# `MatrixGroup`: compare types, dimensions, and coefficient rings
+# (This cannot be defined here because `MatrixGroup` is not yet defined.)
+
+
 function elements(G::T) where T <: GAPGroup
-  els = Vector{GapObj}(GAP.Globals.Elements(G.X))::Vector{GapObj}
+  els = Vector{GapObj}(GAP.Globals.Elements(G.X)::GapObj)
   elems = Vector{elem_type(G)}(undef, length(els))
   for i in 1:length(els)
     elems[i] = group_element(G, els[i])
@@ -85,8 +110,6 @@ end
 function parent(x::GAPGroupElem)
   return x.parent
 end
-
-import Base.isfinite
 
 """
     isfinite(G::GAPGroup) -> Bool
@@ -108,21 +131,23 @@ false
 Base.isfinite(G::PcGroup) = true
 
 """
-    isfinite_order(g::GAPGroupElem) -> Bool
+    isfiniteorder(g::GAPGroupElem) -> Bool
 
 Return `true` if `g` has finite order, and `false` otherwise.
 
 # Examples
 ```jldoctest
-julia> isfinite_order(gen(symmetric_group(5), 1))
+julia> isfiniteorder(gen(symmetric_group(5), 1))
 true
 
-julia> isfinite_order(gen(free_group(2), 1))
+julia> isfiniteorder(gen(free_group(2), 1))
 false
 
 ```
 """
-isfinite_order(x::GAPGroupElem) = GAP.Globals.IsInt(GAP.Globals.Order(x.X))::Bool
+isfiniteorder(x::GAPGroupElem) = GAPWrap.IsInt(GAP.Globals.Order(x.X))::Bool
+
+@deprecate isfinite_order(x::GAPGroupElem) isfiniteorder(x)
 
 """
     order(::Type{T} = fmpz, x::Union{GAPGroupElem, GAPGroup}) where T <: IntegerUnion
@@ -139,7 +164,7 @@ use [`isfinite`](@ref) in order to check for finiteness.
 function order(::Type{T}, x::Union{GAPGroupElem, GAPGroup}) where T <: IntegerUnion
    ord = GAP.Globals.Order(x.X)::GapInt
    if ord === GAP.Globals.infinity
-      error("order() not supported for infinite groups, use isfinite()")
+      throw(GroupsCore.InfiniteOrder(x))
    end
    return T(ord)
 end
@@ -149,7 +174,9 @@ order(x::Union{GAPGroupElem, GAPGroup}) = order(fmpz, x)
 @gapwrap hasorder(G::GAPGroup) = GAP.Globals.HasSize(G.X)
 @gapwrap setorder(G::GAPGroup, val::T) where T<:IntegerUnion = GAP.Globals.SetSize(G.X, GapObj(val))
 
-import Base.exponent
+
+@gapattribute istrivial(x::GAPGroup) = GAP.Globals.IsTrivial(x.X)::Bool
+
 
 @doc Markdown.doc"""
     exponent(::Type{T} = fmpz, G::GAPGroup) where T <: IntegerUnion
@@ -174,17 +201,33 @@ function Base.rand(rng::Random.AbstractRNG, G::GAPGroup)
    return group_element(G, s)
 end
 
+function Base.rand(rng::Random.AbstractRNG, rs::Random.SamplerTrivial{Gr}) where Gr<:Oscar.GAPGroup
+   return rand(rng, rs[])
+end
+
 """
     rand_pseudo(G::Group)
 
 Return a pseudo random element of `G`.  This works faster than `rand`,
 but the returned elements are not necessarily uniformly distributed.
-"""
-function rand_pseudo(G::GAPGroup)
-   s = GAP.Globals.PseudoRandom(G.X)
-   return group_element(G,s)
-end
 
+It is sometimes necessary to work with finite groups that we cannot
+effectively enumerate, e.g. matrix groups over finite fields. We may not even
+know the size of these groups. Yet many algorithms need to sample elements
+from the group "as randomly as possible", whatever that means; but also they
+need this *fast*.
+
+The function `rand_pseudo` returns elements that are cheap to compute and
+somehow random, but makes no guarantees about their distribution.
+
+For finitely presented groups, it returns random words of bounded length.
+
+For finite permutation and matrix groups, it uses a variant of the product
+replacement algorithm. For most inputs, the resulting stream of elements
+relatively quickly converges to a uniform distribution.
+
+"""
+rand_pseudo(G::GAPGroup) = group_element(G, GAP.Globals.PseudoRandom(G.X))
 
 function _maxgroup(x::T, y::T) where T <: GAPGroup
    # A typical situation should be that the two groups are identical,
@@ -193,9 +236,9 @@ function _maxgroup(x::T, y::T) where T <: GAPGroup
    # but it is not always the first choice.
    if x.X === y.X
      return x
-   elseif GAP.Globals.IsSubset(x.X, y.X)
+   elseif GAPWrap.IsSubset(x.X, y.X)
      return x
-   elseif GAP.Globals.IsSubset(y.X, x.X)
+   elseif GAPWrap.IsSubset(y.X, x.X)
      return y
    else
      error("Not yet implemented")
@@ -232,7 +275,7 @@ one!(x::GAPGroupElem) = one(parent(x))
 Base.show(io::IO, x::GAPGroupElem) = print(io, String(GAP.Globals.StringViewObj(x.X)))
 Base.show(io::IO, x::GAPGroup) = print(io, String(GAP.Globals.StringViewObj(x.X)))
 
-Base.isone(x::GAPGroupElem) = GAP.Globals.IsOne(x.X)::Bool
+Base.isone(x::GAPGroupElem) = GAPWrap.IsOne(x.X)
 
 Base.inv(x::GAPGroupElem) = group_element(parent(x), GAP.Globals.Inverse(x.X))
 
@@ -291,7 +334,7 @@ Base.length(x::GAPGroup)::Int = order(x)
 Return whether `g` is an element of `G`.
 The parent of `g` need not be equal to `G`.
 """
-Base.in(g::GAPGroupElem, G::GAPGroup) = GAP.Globals.in(g.X, G.X)::Bool
+Base.in(g::GAPGroupElem, G::GAPGroup) = g.X in G.X
 
 """
     gens(G::Group)
@@ -371,6 +414,10 @@ struct GroupConjClass{T<:GAPGroup, S<:Union{GAPGroupElem,GAPGroup}}
    X::T
    repr::S
    CC::GapObj
+
+   function GroupConjClass(X::T, repr::S, CC::GapObj) where {T<:GAPGroup, S<:Union{GAPGroupElem,GAPGroup}}
+     return new{T, S}(X, repr, CC)
+   end
 end
 
 Base.eltype(::Type{GroupConjClass{T,S}}) where {T,S} = S
@@ -380,10 +427,6 @@ function Base.show(io::IO, x::GroupConjClass)
   print(io, String(GAP.Globals.StringViewObj(x.repr.X)),
             " ^ ",
             String(GAP.Globals.StringViewObj(x.X.X)))
-end
-
-function _conjugacy_class(G, g, cc::GapObj)         # function for assignment
-  return GroupConjClass{typeof(G), typeof(g)}(G, g, cc)
 end
 
 ==(a::GroupConjClass{T, S}, b::GroupConjClass{T, S}) where S where T = a.CC == b.CC 
@@ -402,7 +445,7 @@ representative(C::GroupConjClass) = C.repr
 Return the conjugacy class `cc` of `g` in `G`, where `g` = `representative`(`cc`).
 """
 function conjugacy_class(G::GAPGroup, g::GAPGroupElem)
-   return _conjugacy_class(G, g, GAP.Globals.ConjugacyClass(G.X,g.X))
+   return GroupConjClass(G, g, GAP.Globals.ConjugacyClass(G.X,g.X))
 end
 
 function Base.rand(C::GroupConjClass{S,T}) where S where T<:GAPGroupElem
@@ -422,8 +465,8 @@ Return the vector of all conjugacy classes of elements in G.
 It is guaranteed that the class of the identity is in the first position.
 """
 function conjugacy_classes(G::GAPGroup)
-   L=Vector{GapObj}(GAP.Globals.ConjugacyClasses(G.X))
-   return GroupConjClass{typeof(G), elem_type(G)}[ _conjugacy_class(G,group_element(G,GAP.Globals.Representative(cc)),cc) for cc in L]
+   L=Vector{GapObj}(GAP.Globals.ConjugacyClasses(G.X)::GapObj)
+   return [GroupConjClass(G, group_element(G,GAP.Globals.Representative(cc)),cc) for cc in L]
 end
 
 Base.:^(x::T, y::T) where T <: GAPGroupElem = group_element(_maxgroup(parent(x), parent(y)), x.X ^ y.X)
@@ -434,7 +477,7 @@ Base.:^(x::T, y::T) where T <: GAPGroupElem = group_element(_maxgroup(parent(x),
 Return whether `x` and `y` are conjugate elements in `G`,
 i. e., there is an element $z$ in `G` such that `x^`$z$ equals `y`.
 """
-isconjugate(G::GAPGroup, x::GAPGroupElem, y::GAPGroupElem) = GAP.Globals.IsConjugate(G.X,x.X,y.X)::Bool
+isconjugate(G::GAPGroup, x::GAPGroupElem, y::GAPGroupElem) = GAPWrap.IsConjugate(G.X,x.X,y.X)
 
 """
     representative_action(G::Group, x::GAPGroupElem, y::GAPGroupElem)
@@ -460,7 +503,7 @@ end
 Return the subgroup conjugacy class `cc` of `H` in `G`, where `H` = `representative`(`cc`).
 """
 function conjugacy_class(G::T, g::T) where T<:GAPGroup
-   return _conjugacy_class(G, g, GAP.Globals.ConjugacyClassSubgroups(G.X,g.X))
+   return GroupConjClass(G, g, GAP.Globals.ConjugacyClassSubgroups(G.X,g.X))
 end
 
 function Base.rand(C::GroupConjClass{S,T}) where S where T<:GAPGroup
@@ -468,7 +511,7 @@ function Base.rand(C::GroupConjClass{S,T}) where S where T<:GAPGroup
 end
 
 function Base.rand(rng::Random.AbstractRNG, C::GroupConjClass{S,T}) where S where T<:GAPGroup
-   return T(GAP.Globals.Random(GAP.wrap_rng(rng), C.CC))
+   return _oscar_group(GAP.Globals.Random(GAP.wrap_rng(rng), C.CC), C.X)
 end
 
 """
@@ -477,8 +520,8 @@ end
 Return the vector of all conjugacy classes of subgroups of G.
 """
 function conjugacy_classes_subgroups(G::GAPGroup)
-   L=Vector{GapObj}(GAP.Globals.ConjugacyClassesSubgroups(G.X))
-   return GroupConjClass{typeof(G), typeof(G)}[ _conjugacy_class(G,typeof(G)(GAP.Globals.Representative(cc)),cc) for cc in L]
+  L = Vector{GapObj}(GAP.Globals.ConjugacyClassesSubgroups(G.X)::GapObj)
+  return [GroupConjClass(G, _as_subgroup_bare(G, GAP.Globals.Representative(cc)), cc) for cc in L]
 end
 
 """
@@ -487,22 +530,33 @@ end
 Return the vector of all conjugacy classes of maximal subgroups of G.
 """
 function conjugacy_classes_maximal_subgroups(G::GAPGroup)
-  L = Vector{GapObj}(GAP.Globals.ConjugacyClassesMaximalSubgroups(G.X))
-   return GroupConjClass{typeof(G), typeof(G)}[ _conjugacy_class(G,typeof(G)(GAP.Globals.Representative(cc)),cc) for cc in L]
+  L = Vector{GapObj}(GAP.Globals.ConjugacyClassesMaximalSubgroups(G.X)::GapObj)
+  return [GroupConjClass(G, _as_subgroup_bare(G, GAP.Globals.Representative(cc)), cc) for cc in L]
 end
 
-Base.:^(H::GAPGroup, y::GAPGroupElem) = typeof(H)(H.X ^ y.X)
+"""
+    conjugate_group(G::T, x::GAPGroupElem) where T <: GAPGroup
 
-function conjugate_subgroup(G::T, x::GAPGroupElem) where T<:GAPGroup
-  return T(GAP.Globals.ConjugateSubgroup(G.X,x.X))
+Return the group `G^x` that consists of the elements `g^x`, for `g` in `G`.
+"""
+function conjugate_group(G::T, x::GAPGroupElem) where T <: GAPGroup
+  check_parent(G, x) || error("G and x are not compatible")
+  return _oscar_group(GAP.Globals.ConjugateSubgroup(G.X, x.X), G)
 end
+
+Base.:^(H::GAPGroup, y::GAPGroupElem) = conjugate_group(H, y)
+
+# This function was never exported but may have been used somewhere.
+# (The name is confusing because it is not clear *of which group* the result
+# shall be a subgroup.)
+@deprecate conjugate_subgroup(G::GAPGroup, x::GAPGroupElem) conjugate_group(G, x)
 
 """
     isconjugate(G::GAPGroup, H::GAPGroup, K::GAPGroup)
 
 Return whether `H` and `K` are conjugate subgroups in `G`.
 """
-isconjugate(G::GAPGroup, H::GAPGroup, K::GAPGroup) = GAP.Globals.IsConjugate(G.X,H.X,K.X)::Bool
+isconjugate(G::GAPGroup, H::GAPGroup, K::GAPGroup) = GAPWrap.IsConjugate(G.X,H.X,K.X)
 
 """
     representative_action(G::Group, H::Group, K::Group)
@@ -732,7 +786,7 @@ function hall_subgroups_representatives(G::GAPGroup, P::AbstractVector{<:Integer
    res_gap = GAP.Globals.HallSubgroup(G.X, GAP.julia_to_gap(P))
    if res_gap == GAP.Globals.fail
      return typeof(G)[]
-   elseif GAP.Globals.IsList(res_gap)
+   elseif GAPWrap.IsList(res_gap)
      return _as_subgroups(G, res_gap)
    else
      return [_as_subgroup_bare(G, res_gap)]
@@ -824,7 +878,7 @@ For finite groups `G`, the first return value is `true` if and only if
 the order of `G` is a prime power.
 """
 function ispgroup(G::GAPGroup)
-   if GAP.Globals.IsPGroup(G.X)
+   if GAPWrap.IsPGroup(G.X)
       p = GAP.Globals.PrimePGroup(G.X)
       if p != GAP.Globals.fail
          return true, fmpz(p)  # TODO: allow specifying the type used for the prime
@@ -875,7 +929,7 @@ For other groups, the function tries to decompose `G` as a direct product
 or a semidirect product,
 and if this is not possible as a non-splitting extension of
 a normal subgroup $N$ with the factor group `G`$/N$,
-where $N$ is the centre or the derived subgroup or the Frattini subgroup
+where $N$ is the center or the derived subgroup or the Frattini subgroup
 of `G`.
 
 Note that

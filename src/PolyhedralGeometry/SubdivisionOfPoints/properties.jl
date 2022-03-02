@@ -69,14 +69,14 @@ struct MaximalCellIterator
 end
 
 function Base.iterate(iter::MaximalCellIterator, index = 1)
-    n_max_cells = nmaximal_cells(iter.SOP)
+    n_max_cells = n_maximal_cells(iter.SOP)
     if index > n_max_cells
         return nothing
     end
     current_cell = Polymake.row(pm_object(iter.SOP).MAXIMAL_CELLS, index)
     return (current_cell, index + 1)
 end
-Base.length(iter::MaximalCellIterator) = nmaximal_cells(iter.SOP)
+Base.length(iter::MaximalCellIterator) = n_maximal_cells(iter.SOP)
 
 ###############################################################################
 ###############################################################################
@@ -89,7 +89,7 @@ Base.length(iter::MaximalCellIterator) = nmaximal_cells(iter.SOP)
 ###############################################################################
 
 """
-    nmaximal_cells(SOP::SubdivisionOfPoints)
+    n_maximal_cells(SOP::SubdivisionOfPoints)
 
 Return the number of maximal cells of `SOP`.
 # Examples
@@ -99,11 +99,11 @@ julia> moaepts = [4 0 0; 0 4 0; 0 0 4; 2 1 1; 1 2 1; 1 1 2];
 
 julia> SOP = SubdivisionOfPoints(moaepts, [1,1,1,1,1,1]);
 
-julia> nmaximal_cells(SOP)
+julia> n_maximal_cells(SOP)
 1
 ```
 """
-nmaximal_cells(SOP::SubdivisionOfPoints) = pm_object(SOP).N_MAXIMAL_CELLS
+n_maximal_cells(SOP::SubdivisionOfPoints) = pm_object(SOP).N_MAXIMAL_CELLS
 
 """
     ambient_dim(SOP::SubdivisionOfPoints)
@@ -122,7 +122,7 @@ julia> ambient_dim(SOP)
 3
 ```
 """
-ambient_dim(SOP::SubdivisionOfPoints) = pm_object(SOP).VECTOR_AMBIENT_DIM - 1
+ambient_dim(SOP::SubdivisionOfPoints) = pm_object(SOP).VECTOR_AMBIENT_DIM::Int - 1
 
 
 @doc Markdown.doc"""
@@ -140,7 +140,7 @@ julia> npoints(SOP)
 6
 ```
 """
-npoints(SOP::SubdivisionOfPoints) = pm_object(SOP).N_POINTS
+npoints(SOP::SubdivisionOfPoints) = pm_object(SOP).N_POINTS::Int
 
 
 
@@ -232,4 +232,4 @@ julia> isregular(SOP)
 true
 ```
 """
-isregular(SOP::SubdivisionOfPoints) = pm_object(SOP).REGULAR
+isregular(SOP::SubdivisionOfPoints) = pm_object(SOP).REGULAR::Bool

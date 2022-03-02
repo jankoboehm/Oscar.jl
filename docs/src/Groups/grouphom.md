@@ -52,6 +52,7 @@ true
 hom(G::GAPGroup, H::GAPGroup, img::Function)
 hom(G::GAPGroup, H::GAPGroup, gensG::Vector, imgs::Vector)
 image(f::GAPGroupHomomorphism, x::GAPGroupElem)
+preimage(f::GAPGroupHomomorphism, x::GAPGroupElem)
 restrict_homomorphism(f::GAPGroupHomomorphism, H::GAPGroup)
 ```
 
@@ -118,7 +119,7 @@ Oscar supports the following operations on homomorphisms.
 * `f^n` = the homomorphism `f` composed `n` times with itself.
   An exception is thrown if the domain and the codomain of `f` do not coincide
   (unless `n=1`). If `n` is negative, the result is the inverse of `f` composed `n` times with itself.
-* `compose(g,f)` = composition of `g` and `f`. This works only if the codomain of `g` coincide with the domain of `f`. Shorter equivalent expressions are `g*f` and `f(g)`.
+* `compose(f, g)` = composition of `f` and `g`. This works only if the codomain of `f` coincides with the domain of `g`. Shorter equivalent expressions are `f*g` and `g(f)`.
 
   **Example:**
 ```jldoctest
@@ -140,11 +141,10 @@ true
 
 ## Properties of homomorphisms
 
-Oscar implements the following attributes of homomorphisms.
+Oscar implements the following attributes of homomorphisms,
+in addition to the usual `domain` and `codomain`.
 
 ```@docs
-domain(f::GAPGroupHomomorphism)
-codomain(f::GAPGroupHomomorphism)
 isinjective(f::GAPGroupHomomorphism)
 issurjective(f::GAPGroupHomomorphism)
 isbijective(f::GAPGroupHomomorphism)

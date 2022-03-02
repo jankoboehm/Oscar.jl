@@ -1,7 +1,9 @@
 using Oscar
 using Test
 
-include("testing.jl")
+include("abelian_aut.jl")
+include("spinor_norms.jl")
+include("conformance.jl")
 include("constructors.jl")
 include("operations.jl")
 include("elements.jl")
@@ -16,3 +18,5 @@ include("gsets.jl")
 include("forms.jl")
 include("MatrixDisplay.jl")
 include("group_characters.jl")
+include("FiniteFormOrthogonalGroup.jl")
+include("GrpAb.jl")

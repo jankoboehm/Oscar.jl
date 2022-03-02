@@ -1,10 +1,12 @@
+export iterate_basis
+
 ################################################################################
 #
 #  All Monomials
 #
 ################################################################################
 
-# Returns an iterator over all monomials of R of degree d
+# Return an iterator over all monomials of R of degree d
 all_monomials(R::MPolyRing, d::Int) = AllMonomials(R, d)
 
 AllMonomials(R::MPolyRing, d::Int) = AllMonomials{typeof(R)}(R, d)
@@ -76,11 +78,11 @@ end
 #
 ################################################################################
 
-# Returns the dimension of the graded component of degree d.
+# Return the dimension of the graded component of degree d.
 # If we cannot compute the Molien series (so far in the modular case), we return
 # -1.
 function dimension_via_molien_series(::Type{T}, R::InvRing, d::Int) where T <: IntegerUnion
-  if ismodular(R)
+  if !ismolien_series_implemented(R)
     return -1
   end
 
@@ -91,8 +93,88 @@ function dimension_via_molien_series(::Type{T}, R::InvRing, d::Int) where T <: I
   return T(numerator(k))::T
 end
 
-# Iterate over the basis of the degree d component of an invariant ring.
-# algo can be either :default, :reynolds or :linear_algebra.
+@doc Markdown.doc"""
+     iterate_basis(IR::InvRing, d::Int, algo::Symbol = :default)
+
+Given an invariant ring `IR` and an integer `d`, return an iterator over a basis
+for the invariants in degree `d`.
+The used algorithm can be specified using the optional argument `algo`. Possible
+values are `:reynolds` which uses the reynolds operator to construct the basis
+(only available in the non-modular case) and `:linear_algebra` which uses plain
+linear algebra. With the default value `:default` the heuristically best algorithm
+is selected.
+
+When using the reynolds operator the basis is constructed element-by-element.
+With linear algebra this is not possible and the whole basis will be constructed
+directly when calling the function.
+
+See also [`basis`](@ref).
+
+# Examples
+```
+julia> K, a = CyclotomicField(3, "a")
+(Cyclotomic field of order 3, a)
+
+julia> M1 = matrix(K, [0 0 1; 1 0 0; 0 1 0])
+[0   0   1]
+[1   0   0]
+[0   1   0]
+
+julia> M2 = matrix(K, [1 0 0; 0 a 0; 0 0 -a-1])
+[1   0        0]
+[0   a        0]
+[0   0   -a - 1]
+
+julia> G = MatrixGroup(3, K, [ M1, M2 ])
+Matrix group of degree 3 over Cyclotomic field of order 3
+
+julia> IR = invariant_ring(G)
+Invariant ring of
+Matrix group of degree 3 over Cyclotomic field of order 3
+with generators
+AbstractAlgebra.Generic.MatSpaceElem{nf_elem}[[0 0 1; 1 0 0; 0 1 0], [1 0 0; 0 a 0; 0 0 -a-1]]
+
+julia> B = iterate_basis(IR, 6)
+Iterator over a basis of the component of degree 6 of
+Invariant ring of
+Matrix group of degree 3 over Cyclotomic field of order 3
+with generators
+AbstractAlgebra.Generic.MatSpaceElem{nf_elem}[[0 0 1; 1 0 0; 0 1 0], [1 0 0; 0 a 0; 0 0 -a-1]]
+
+julia> collect(B)
+4-element Vector{MPolyElem_dec{nf_elem, AbstractAlgebra.Generic.MPoly{nf_elem}}}:
+ x[1]^2*x[2]^2*x[3]^2
+ x[1]^4*x[2]*x[3] + x[1]*x[2]^4*x[3] + x[1]*x[2]*x[3]^4
+ x[1]^3*x[2]^3 + x[1]^3*x[3]^3 + x[2]^3*x[3]^3
+ x[1]^6 + x[2]^6 + x[3]^6
+
+julia> M = matrix(GF(3), [0 1 0; -1 0 0; 0 0 -1])
+[0   1   0]
+[2   0   0]
+[0   0   2]
+
+julia> G = MatrixGroup(3, GF(3), [M])
+Matrix group of degree 3 over Galois field with characteristic 3
+
+julia> IR = invariant_ring(G)
+Invariant ring of
+Matrix group of degree 3 over Galois field with characteristic 3
+with generators
+gfp_mat[[0 1 0; 2 0 0; 0 0 2]]
+
+julia> B = iterate_basis(IR, 2)
+Iterator over a basis of the component of degree 2 of
+Invariant ring of
+Matrix group of degree 3 over Galois field with characteristic 3
+with generators
+gfp_mat[[0 1 0; 2 0 0; 0 0 2]]
+
+julia> collect(B)
+2-element Vector{MPolyElem_dec{gfp_elem, gfp_mpoly}}:
+ x[1]^2 + x[2]^2
+ x[3]^2
+```
+"""
 function iterate_basis(R::InvRing, d::Int, algo::Symbol = :default)
   @assert d >= 0 "Degree must be non-negativ"
 
@@ -131,6 +213,7 @@ function iterate_basis(R::InvRing, d::Int, algo::Symbol = :default)
 end
 
 function iterate_basis_reynolds(R::InvRing, d::Int)
+  @assert !ismodular(R)
   @assert d >= 0 "Degree must be non-negativ"
 
   monomials = all_monomials(polynomial_ring(R), d)
@@ -169,7 +252,14 @@ function iterate_basis_linear_algebra(IR::InvRing, d::Int)
   K = base_ring(R)
 
   group_gens = action(IR)
-  M = zero_matrix(K, length(group_gens)*length(mons), length(mons))
+
+  M = sparse_matrix(K)
+  M.c = length(mons)
+  M.r = length(group_gens)*length(mons)
+  for i = 1:M.r
+    push!(M.rows, sparse_row(K))
+  end
+
   for i = 1:length(group_gens)
     offset = (i - 1)*length(mons)
     phi = right_action(R, group_gens[i])
@@ -177,7 +267,10 @@ function iterate_basis_linear_algebra(IR::InvRing, d::Int)
       f = mons[j]
       g = phi(f) - f
       for (c, m) in zip(coefficients(g), monomials(g))
-        M[offset + mons_to_rows[m], j] = c
+        k = offset + mons_to_rows[m]
+        push!(M.rows[k].pos, j)
+        push!(M.rows[k].values, c)
+        M.nnz += 1
       end
     end
   end
@@ -215,14 +308,6 @@ function iterate_reynolds(BI::InvRingBasisIterator)
     return nothing
   end
 
-  K = base_ring(polynomial_ring(BI.R))
-
-  monomial_to_basis = Dict{elem_type(polynomial_ring(BI.R)), Int}()
-
-  if BI.degree == 0
-    return one(polynomial_ring(BI.R)), (zero_matrix(K, 1, 0), monomial_to_basis, Vector{Int}())
-  end
-
   state = nothing
   while true
     fstate = iterate(BI.monomials, state)
@@ -236,38 +321,21 @@ function iterate_reynolds(BI::InvRingBasisIterator)
     if iszero(g)
       continue
     end
-    M = zero_matrix(K, BI.dim, length(g))
-    pivot_rows = zeros(Int, length(g))
     g = inv(leading_coefficient(g))*g
-    i = 1
-    for (c, m) in zip(coefficients(g), monomials(g))
-      monomial_to_basis[m] = i
-      M[1, i] = c
-      i += 1
-    end
-    pivot_rows[1] = 1
-    @assert M[1, 1] == 1
-    v = zeros(K, ncols(M))
-    return g, (M, monomial_to_basis, state, pivot_rows, 1, v)
+    B = BasisOfPolynomials(polynomial_ring(BI.R), [ g ])
+    return g, (B, state)
   end
 end
 
 function iterate_reynolds(BI::InvRingBasisIterator, state)
   @assert BI.reynolds
 
-  M = state[1]
-  r = state[5]
-  if r == BI.dim
+  B = state[1]
+  monomial_state = state[2]
+  if nrows(B.M) == BI.dim
     return nothing
   end
 
-  pivot_rows = state[4]
-  v = state[6]
-
-  K = base_ring(polynomial_ring(BI.R))
-
-  monomial_to_basis = state[2]
-  monomial_state = state[3]
   while true
     fmonomial_state = iterate(BI.monomials, monomial_state)
     if fmonomial_state === nothing
@@ -281,24 +349,8 @@ function iterate_reynolds(BI::InvRingBasisIterator, state)
       continue
     end
 
-    v = zero!.(v)
-    new_cols = 0
-    for (c, m) in zip(coefficients(g), monomials(g))
-      if !haskey(monomial_to_basis, m)
-        monomial_to_basis[m] = length(v) + 1
-        new_cols += 1
-        push!(v, c)
-      else
-        col = monomial_to_basis[m]
-        v[col] = c
-      end
-    end
-    if !iszero(new_cols)
-      append!(pivot_rows, zeros(Int, new_cols))
-      M = hcat(M, zero_matrix(K, nrows(M), new_cols))
-    end
-    if Hecke._add_row_to_rref!(M, v, pivot_rows, r + 1)
-      return inv(leading_coefficient(g))*g, (M, monomial_to_basis, monomial_state, pivot_rows, r + 1, v)
+    if add_to_basis!(B, g)
+      return inv(leading_coefficient(g))*g, (B, monomial_state)
     end
   end
 end
@@ -317,7 +369,10 @@ function iterate_linear_algebra(BI::InvRingBasisIterator)
     end
     f += N[i, 1]*BI.monomials_collected[i]
   end
-  return f, 2
+  # Have to (should...) divide by the leading coefficient again:
+  # The matrix was in echelon form, but the columns were not necessarily sorted
+  # w.r.t. the monomial ordering.
+  return inv(leading_coefficient(f))*f, 2
 end
 
 function iterate_linear_algebra(BI::InvRingBasisIterator, state::Int)
@@ -334,7 +389,7 @@ function iterate_linear_algebra(BI::InvRingBasisIterator, state::Int)
     end
     f += N[i, state]*BI.monomials_collected[i]
   end
-  return f, state + 1
+  return inv(leading_coefficient(f))*f, state + 1
 end
 
 ################################################################################

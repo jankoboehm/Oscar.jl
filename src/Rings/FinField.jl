@@ -3,7 +3,6 @@ module DiscLog
 using Oscar
 import Oscar.Nemo
 import Oscar.Hecke
-import Oscar.AbstractAlgebra: get_special, set_special
 
 function __init__()
   Hecke.add_verbose_scope(:DiscLog)
@@ -23,14 +22,7 @@ end
 ###############################################################
 #TODO: consolidate with Hecke: isprimitive_root?
 
-function factored_order(K::FinField)
-  l = get_special(K, :factored_order)
-  if l === nothing
-    l = factor(size(K)-1)
-    set_special(K, :factored_order => l)
-  end
-  return l
-end
+@attr Fac{fmpz} factored_order(K::FinField) = factor(size(K)-1)
 
 function Oscar.isprimitive(a::FinFieldElem, f::Fac{fmpz} = factored_order(parent(a)))
   iszero(a) && return false
@@ -43,15 +35,12 @@ function Oscar.isprimitive(a::FinFieldElem, f::Fac{fmpz} = factored_order(parent
   return true
 end
 
-function generator(K::FinField)
-  a = get_special(K, :generator)
-  a === nothing || return a
+@attr elem_type(T) function generator(K::T) where {T <: FinField}
   #if isconway use gen(K)
   a = rand(K)
   while !isprimitive(a)
     a = rand(K)
   end
-  set_special(K, :generator => a)
   return a
 end
 

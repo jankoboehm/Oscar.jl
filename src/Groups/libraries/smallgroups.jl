@@ -19,7 +19,8 @@ The group is given of type `PcGroup` if the group is solvable,
 `PermGroup` otherwise.
 """
 function small_group(n::Int, m::Int)
-  @assert m<= number_small_groups(n) "There are less than $m groups of order $n, up to isomorphism."
+  N = number_small_groups(n)
+  @assert m <= N "There are only $N groups of order $n, up to isomorphism."
   G = GAP.Globals.SmallGroup(n, m)
   T = _get_type(G)
   return T(G)
@@ -73,10 +74,9 @@ function all_small_groups(n::Int, L...)
          L1[i+1] = GAP.julia_to_gap(L[i])
       end
    end
-   L1 = GAP.julia_to_gap(L1)
 
-   K = GAP.Globals.CallFuncList(GAP.Globals.AllSmallGroups,L1)
-   return [_get_type(K[i])(K[i]) for i in 1:length(K)]          # GAP.julia_to_gap(K) does not work
+   K = GAP.Globals.AllSmallGroups(L1...)
+   return [_get_type(x)(x) for x in K]          # GAP.julia_to_gap(K) does not work
 end
 #T what does this comment mean?
 

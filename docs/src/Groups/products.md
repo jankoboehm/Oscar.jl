@@ -20,7 +20,7 @@ Pages = ["products.md"]
 ```@docs
 DirectProductGroup
 direct_product(L::AbstractVector{<:GAPGroup}; morphisms=false)
-inner_direct_product(L::AbstractVector{T}; morphisms=false) where T<:Union{PcGroup,PermGroup,FPGroup}
+inner_direct_product(L::AbstractVector{T}; morphisms=false) where T<:Union{PcGroup,FPGroup}
 number_of_factors(G::DirectProductGroup)
 cartesian_power(G::GAPGroup, n::Int)
 inner_cartesian_power(G::T, n::Int; morphisms=false) where T<: GAPGroup
@@ -42,7 +42,7 @@ normal_subgroup(G::SemidirectProductGroup)
 acting_subgroup(G::SemidirectProductGroup)
 homomorphism_of_semidirect_product(G::SemidirectProductGroup)
 isfull_semidirect_product(G::SemidirectProductGroup)
-embedding(G::SemidirectProductGroup{S,T}, n::Int) where S where T
+embedding(G::SemidirectProductGroup, n::Int)
 projection(G::SemidirectProductGroup)
 ```
 

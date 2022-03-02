@@ -1,4 +1,3 @@
-import Base: ==
 export singular_ring, MPolyQuo, MPolyQuoElem, MPolyQuoIdeal
 export quo, base_ring, modulus, gens, ngens, dim, simplify!
 export issubset
@@ -8,11 +7,10 @@ export issubset
 #
 ##############################################################################
 
-mutable struct MPolyQuo{S} <: AbstractAlgebra.Ring
+@attributes mutable struct MPolyQuo{S} <: AbstractAlgebra.Ring
   R::MPolyRing
   I::MPolyIdeal{S}
   SQR::Singular.PolyRing  # expensive qring R/I, set and retrived by singular_ring()
-  AbstractAlgebra.@declare_other
 
   function MPolyQuo(R, I) where S
     @assert base_ring(I) === R
@@ -152,8 +150,7 @@ julia> R, (x, y, z) = PolynomialRing(QQ, ["x", "y", "z"])
 
 julia> A, _ = quo(R, ideal(R, [y-x^2, z-x^3]))
 (Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z), Map from
-Multivariate Polynomial Ring in x, y, z over Rational Field to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z) defined by a julia-function with inverse
-)
+Multivariate Polynomial Ring in x, y, z over Rational Field to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z) defined by a julia-function with inverse)
 
 julia> a = ideal(A, [x-y])
 ideal(x - y)
@@ -180,8 +177,7 @@ julia> R, (x, y, z) = PolynomialRing(QQ, ["x", "y", "z"])
 
 julia> A, _ = quo(R, ideal(R, [y-x^2, z-x^3]))
 (Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z), Map from
-Multivariate Polynomial Ring in x, y, z over Rational Field to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z) defined by a julia-function with inverse
-)
+Multivariate Polynomial Ring in x, y, z over Rational Field to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z) defined by a julia-function with inverse)
 
 julia> a = ideal(A, [x-y])
 ideal(x - y)
@@ -359,13 +355,13 @@ end
 
 ##################################################################
 
-function singular_ring(Rx::MPolyQuo; keep_ordering::Bool = true)
+function singular_ring(Rx::MPolyQuo, ordering::MonomialOrdering = degrevlex(gens(Rx.R)); keep_ordering::Bool = true)
   if !isdefined(Rx, :SQR)
-    groebner_assure(Rx.I)
-    singular_assure(Rx.I.gb)
+    groebner_assure(Rx.I, ordering)
+    singular_assure(Rx.I.gb[ordering], ordering)
     Rx.SQR = Singular.create_ring_from_singular_ring(
-                      Singular.libSingular.rQuotientRing(Rx.I.gb.S.ptr,
-                                             base_ring(Rx.I.gb.S).ptr))
+                Singular.libSingular.rQuotientRing(Rx.I.gb[ordering].S.ptr,
+                base_ring(Rx.I.gb[ordering].S).ptr))
   end
   return Rx.SQR
 end
@@ -434,7 +430,8 @@ julia> A, _ = quo(R, ideal(R, [x^3*y^2-y^3*x^2, x*y^4-x*y^2]));
 julia> a = ideal(A, [x^3*y^4-x+y, x*y+y^2*x])
 ideal(x^3*y^4 - x + y, x*y^2 + x*y)
 
-julia> simplify(a);
+julia> simplify(a)
+ideal(x^2*y^3 - x + y, x*y^2 + x*y)
 
 julia> a
 ideal(x^3*y^4 - x + y, x*y^2 + x*y)
@@ -450,11 +447,11 @@ function simplify(a::MPolyQuoIdeal)
    oscar_assure(a)
    RI  = base_ring(a.I)
    J = R.I
-   groebner_assure(J)
-   singular_assure(J.gb)
+   GJ = groebner_assure(J)
+   singular_assure(GJ)
    oscar_assure(a)
    singular_assure(a.I)
-   red  = reduce(a.I.gens.S, J.gb.S)
+   red  = reduce(a.I.gens.S, GJ.S)
    SR   = singular_ring(R)
    si   = Singular.Ideal(SR, gens(red))
    red  = MPolyQuoIdeal(R, si)
@@ -465,11 +462,11 @@ function simplify!(a::MPolyQuoIdeal)
     oscar_assure(a)
     RI  = base_ring(a.I)
     J = R.I
-    groebner_assure(J)
-    singular_assure(J.gb)
+    GJ = groebner_assure(J)
+    singular_assure(GJ)
     oscar_assure(a)
     singular_assure(a.I)
-    red  = reduce(a.I.gens.S, J.gb.S)
+    red  = reduce(a.I.gens.S, GJ.S)
     SR   = singular_ring(R)
     a.SI = Singular.Ideal(SR, gens(red))
     a.I  = ideal(RI, RI.(gens(a.SI)))
@@ -572,21 +569,22 @@ x
 function simplify(f::MPolyQuoElem)
   R = parent(f)
   I = R.I
-  groebner_assure(I)
-  singular_assure(I.gb)
-  Sx = base_ring(I.gb.S)
+  G = groebner_assure(I)
+  singular_assure(G)
+  Sx = base_ring(G.S)
   g = f.f
-  return R(I.gens.Ox(reduce(Sx(g), I.gb.S)))
+return R(I.gens.Ox(reduce(Sx(g), G.S)))::elem_type(R)
 end
+
 function simplify!(f::MPolyQuoElem)
   R = parent(f)
   I = R.I
-  groebner_assure(I)
-  singular_assure(I.gb)
-  Sx = base_ring(I.gb.S)
+  G = groebner_assure(I)
+  singular_assure(G)
+  Sx = base_ring(G.S)
   g = f.f
-  f.f = I.gens.Ox(reduce(Sx(g), I.gb.S))
-  return f
+  f.f = I.gens.Ox(reduce(Sx(g), G.S))
+  return f::elem_type(R)
 end
 
 
@@ -634,8 +632,7 @@ julia> R, (x, y) = PolynomialRing(QQ, ["x", "y"]);
 
 julia> A, _ = quo(R, ideal(R, [x^2-y^3, x-y]))
 (Quotient of Multivariate Polynomial Ring in x, y over Rational Field by ideal(x^2 - y^3, x - y), Map from
-Multivariate Polynomial Ring in x, y over Rational Field to Quotient of Multivariate Polynomial Ring in x, y over Rational Field by ideal(x^2 - y^3, x - y) defined by a julia-function with inverse
-)
+Multivariate Polynomial Ring in x, y over Rational Field to Quotient of Multivariate Polynomial Ring in x, y over Rational Field by ideal(x^2 - y^3, x - y) defined by a julia-function with inverse)
 
 julia> typeof(A)
 MPolyQuo{fmpq_mpoly}
@@ -668,8 +665,10 @@ Multivariate Polynomial Ring in x, y, z over Rational Field graded by
   z -> [1] to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field graded by
   x -> [1]
   y -> [1]
-  z -> [1] by ideal(x^2*z - y^3, x - y) defined by a julia-function with inverse
-)
+  z -> [1] by ideal(x^2*z - y^3, x - y) defined by a julia-function with inverse)
+
+julia> typeof(B)
+MPolyQuo{MPolyElem_dec{fmpq, fmpq_mpoly}}
 ```
 """
 function quo(R::MPolyRing, I::MPolyIdeal) 
@@ -728,14 +727,15 @@ one(Q::MPolyQuo) = Q(1)
 function isinvertible_with_inverse(a::MPolyQuoElem)
   Q = parent(a)
   I = Q.I
-  if isdefined(I, :gb)
-    oscar_assure(I)
-    J = I.gb.O
+  if !isempty(I.gb)
+    G = first(values(I.gb))
+    oscar_assure(G)
+    J = G.O
   else
     J = gens(I)
   end
   J = vcat(J, [a.f])
-  j, T = groebner_basis_with_transformation_matrix(ideal(J))
+  j, T = groebner_basis_with_transform(ideal(J))
   if 1 in j
     @assert nrows(T) == 1
     return true, Q(T[1, end])
@@ -831,9 +831,10 @@ function divides(a::MPolyQuoElem, b::MPolyQuoElem)
 
   Q = parent(a)
   I = Q.I
-  if isdefined(I, :gb)
-    oscar_assure(I)
-    J = I.gb.O
+  if !isempty(I.gb)
+      GI = first(values(I.gb))
+      oscar_assure(GI)
+      J = GI.O
   else
     J = gens(I)
   end
@@ -854,10 +855,10 @@ end
 
 #TODO: find a more descriptive, meaningful name
 function _kbase(Q::MPolyQuo)
-  I = Q.I
-  groebner_assure(I)
-  singular_assure(I.gb)
-  s = Singular.kbase(I.gb.S)
+  I  = Q.I
+  GI = groebner_assure(I)
+  singular_assure(GI)
+  s = Singular.kbase(GI.S)
   if iszero(s)
     error("ideal was no zero-dimensional")
   end
@@ -963,7 +964,7 @@ function homogeneous_component(W::MPolyQuo{<:MPolyElem_dec}, d::GrpAbFinGenElem)
   B = [x for x = B]
 
   M, h = vector_space(base_ring(R), B, target = W)
-  Hecke.set_special(M, :show => show_homo_comp, :data => (W, d))
+  set_attribute!(M, :show => show_homo_comp, :data => (W, d))
   return M, h
 end
 
@@ -1015,7 +1016,7 @@ subalgebra of `R` generated by all elements collected in `V`.
 
 # Examples
 ```jldoctest
-julia> R, (x,y,z) =  GradedPolynomialRing(QQ, ["x", "y", "z"])
+julia> R, (x,y,z) = GradedPolynomialRing(QQ, ["x", "y", "z"])
 (Multivariate Polynomial Ring in x, y, z over Rational Field graded by
   x -> [1]
   y -> [1]
@@ -1048,4 +1049,18 @@ function minimal_subalgebra_generators(V::Vector{S}) where S <: Union{MPolyElem,
     end
   end
   return result
+end
+
+################################################################################
+#
+#  Promote rule
+#
+################################################################################
+
+function AbstractAlgebra.promote_rule(::Type{MPolyQuoElem{S}}, ::Type{T}) where {S, T <: RingElem}
+  if AbstractAlgebra.promote_rule(S, T) === S
+    return MPolyQuoElem{S}
+  else
+    return Union{}
+  end
 end

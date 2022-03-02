@@ -1,11 +1,6 @@
 # TODO: in this file are used many methods TEMPORARILY defined in files matrix_manipulation.jl and stuff_field_gen.jl
 # once methods in those files will be deleted / replaced / modified, this file need to be modified too
 
-
-
-import AbstractAlgebra: FieldElem, PolyElem, MPolyElem
-import Hecke: base_ring, defining_polynomial, gram_matrix, radical
-
 export
     alternating_form,
     corresponding_bilinear_form,
@@ -181,19 +176,8 @@ end
 ########################################################################
 
 
-function _assign_description(sym::Symbol)
-   if sym== :alternating print("Alternating")
-   elseif sym== :hermitian print("Hermitian")
-   elseif sym== :symmetric print("Symmetric")
-   elseif sym== :quadratic print("Quadratic")
-   else error("unsupported description")
-   end
-end
-
-
 function Base.show(io::IO, f::SesquilinearForm)
-   _assign_description(f.descr)
-   println(" form with Gram matrix ")
+   println(io, "$(f.descr) form with Gram matrix ")
    show(io, "text/plain", gram_matrix(f))
 end
 
@@ -322,7 +306,7 @@ function Base.getproperty(f::SesquilinearForm, sym::Symbol)
    if isdefined(f,sym) return getfield(f,sym) end
 
    if sym === :ring_iso
-      f.ring_iso = ring_iso_oscar_gap(base_ring(f))
+      f.ring_iso = iso_oscar_gap(base_ring(f))
 
    elseif sym == :X
       if !isdefined(f, :X)
@@ -442,6 +426,6 @@ For a quadratic form `Q`, return whether `Q` is singular, i.e. `Q` has nonzero r
 """
 function issingular(f::SesquilinearForm{T}) where T
    f.descr != :quadratic && throw(ArgumentError("The form is not quadratic"))
-   return GAP.Globals.IsSingularForm(f.X)
+   return GAPWrap.IsSingularForm(f.X)
 end
 

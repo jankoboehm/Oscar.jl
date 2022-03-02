@@ -185,10 +185,40 @@ end
 @testset "Degree" begin
   R, (x,y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
   @test_throws ArgumentError degree(zero(R))
+
+  Z = abelian_group(0)
+  R, (x,y) = filtrate(PolynomialRing(QQ, ["x", "y"])[1], [Z[1], Z[1]], (x,y) -> x[1] > y[1])
+  @test degree(x+y^3) == 1*Z[1]
 end
 
 @testset "Grading" begin
   R, (x,y) = grade(PolynomialRing(QQ, ["x", "y"])[1]);
   D = grading_group(R)
   @test isisomorphic(D, abelian_group([0]))
+end
+
+# Conversion bug
+
+begin
+  R, (x,y) = QQ["x", "y"]
+  R_ext, _ = PolynomialRing(R, ["u", "v"])
+  S, (u,v) = grade(R_ext, [1,1])
+  @test S(R_ext(x)) == @inferred S(x)
+end
+
+begin
+  R, (x,y) = QQ["x", "y"]
+  P, (s, t) = R["s", "t"]
+  S, (u, v) = grade(P, [1,1])
+  @test one(QQ)*u == u
+end
+
+begin
+  R, (x, y) = QQ["x", "y"]
+  S, (u, v) = grade(R)
+  @test hash(S(u)) == hash(S(u))
+
+  D = Dict(u => 1)
+  @test haskey(D, u)
+  @test !haskey(D, v)
 end

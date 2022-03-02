@@ -1,6 +1,3 @@
-import AbstractAlgebra: get_special, MatElem, matrix, MatSpace, parent_type, Ring, RingElem, set_special
-import Hecke: base_ring, det, fmpz, fq_nmod, FqNmodFiniteField, nrows, tr, trace
-
 export
     general_linear_group,
     mat_elem_type,
@@ -28,15 +25,13 @@ Type of groups `G` of `n x n` matrices over the ring `R`, where `n = degree(G)` 
 
 At the moment, only rings of type `FqNmodFiniteField` are supported.
 """
-mutable struct MatrixGroup{RE<:RingElem, T<:MatElem{RE}} <: GAPGroup
+@attributes mutable struct MatrixGroup{RE<:RingElem, T<:MatElem{RE}} <: GAPGroup
    deg::Int
    ring::Ring
    X::GapObj
    gens::Vector{<:AbstractMatrixGroupElem}
    descr::Symbol                       # e.g. GL, SL, symbols for isometry groups
    ring_iso::MapFromFunc # Isomorphism from the Oscar base ring to the GAP base ring
-#   order::fmpz
-   AbstractAlgebra.@declare_other
 
    MatrixGroup{RE,T}(m::Int, F::Ring) where {RE,T} = new{RE,T}(m,F)
 
@@ -49,7 +44,7 @@ MatrixGroup(m::Int, F::Ring) = MatrixGroup{elem_type(F), dense_matrix_type(elem_
 function MatrixGroup{RE,S}(m::Int, F::Ring, V::AbstractVector{T}) where {RE,S} where T<:Union{MatElem,AbstractMatrixGroupElem}
    G = MatrixGroup(m,F)
 
-   L = Vector{MatrixGroupElem}(undef, length(V))
+   L = Vector{elem_type(G)}(undef, length(V))
    for i in 1:length(V)
       @assert base_ring(V[i])==F "The elements must have the same base ring"
       @assert nrows(V[i])==m "The elements must have the same dimension"
@@ -78,6 +73,37 @@ function MatrixGroup{RE,S}(m::Int, F::Ring, V::AbstractVector{T}) where {RE,S} w
 end
 
 MatrixGroup(m::Int, F::Ring, V::AbstractVector{T}) where T<:Union{MatElem,AbstractMatrixGroupElem} = MatrixGroup{elem_type(F), dense_matrix_type(elem_type(F))}(m,F,V)
+
+
+# `MatrixGroup`: compare types, dimensions, and coefficient rings
+function check_parent(G::T, g::GAPGroupElem) where T <: MatrixGroup
+  P = g.parent
+  return T === typeof(P) && G.deg == P.deg && G.ring == P.ring
+end
+
+# `MatrixGroup`: set dimension and ring of `G`
+function _oscar_group(obj::GapObj, G::MatrixGroup)
+  d = GAP.Globals.DimensionOfMatrixGroup(obj)
+  d == G.deg || error("requested dimension of matrices ($(G.deg)) does not match the given matrix dimension ($d)")
+
+  R = G.ring
+  iso = G.ring_iso
+  GAP.Globals.IsSubset(codomain(iso), GAP.Globals.FieldOfMatrixGroup(obj)) || error("matrix entries are not in the requested ring ($(codomain(iso)))")
+
+  M = MatrixGroup(d, R)
+  M.X = obj
+  M.ring = R
+  M.ring_iso = iso
+  return M
+end
+
+
+function _as_subgroup_bare(G::T, H::GapObj) where {T <: MatrixGroup}
+  H1 = T(G.deg,G.ring)
+  H1.ring_iso = G.ring_iso
+  H1.X = H
+  return H1
+end
 
 # NOTE: at least one of the fields :elm and :X must always defined, but not necessarily both of them.
 """
@@ -121,6 +147,23 @@ Base.eltype(::Type{MatrixGroup{S,T}}) where {S,T} = MatrixGroupElem{S,T}
 # `parent_type` is defined and documented in AbstractAlgebra.
 parent_type(::Type{T}) where T<:MatrixGroupElem{RE,S} where {RE,S} = MatrixGroup{RE,S}
 parent_type(::T) where T<:MatrixGroupElem{RE,S} where {RE,S} = MatrixGroup{RE,S}
+
+
+function Base.deepcopy_internal(x::MatrixGroupElem, dict::IdDict)
+  if isdefined(x, :X)
+    X = Base.deepcopy_internal(x.X, dict)
+    if isdefined(x, :elm)
+      elm = Base.deepcopy_internal(x.elm, dict)
+      return MatrixGroupElem(x.parent, elm, X)
+    else
+      return MatrixGroupElem(x.parent, X)
+    end
+  elseif isdefined(x, :elm)
+    elm = Base.deepcopy_internal(x.elm, dict)
+    return MatrixGroupElem(x.parent, elm)
+  end
+  error("$x has neither :X nor :elm")
+end
 
 
 ########################################################################
@@ -206,7 +249,7 @@ function Base.getproperty(G::MatrixGroup, sym::Symbol)
    isdefined(G,sym) && return getfield(G,sym)
 
    if sym === :ring_iso
-      G.ring_iso = ring_iso_oscar_gap(G.ring)
+      G.ring_iso = iso_oscar_gap(G.ring)
 
    elseif sym === :X
       if isdefined(G,:descr)
@@ -239,7 +282,7 @@ end
 Base.IteratorSize(::Type{<:MatrixGroup}) = Base.SizeUnknown()
 
 function Base.iterate(G::MatrixGroup)
-  L=GAP.Globals.Iterator(G.X)
+  L=GAP.Globals.Iterator(G.X)::GapObj
   @assert ! GAPWrap.IsDoneIterator(L)
   i = GAPWrap.NextIterator(L)
   return MatrixGroupElem(G, i), L
@@ -292,7 +335,7 @@ function lies_in(x::MatElem, G::MatrixGroup, x_gap)
    else
       if x_gap==nothing x_gap = map_entries(G.ring_iso, x) end
      # x_gap !=nothing || x_gap = map_entries(G.ring_iso, x)
-      return GAP.Globals.in(x_gap,G.X), x_gap
+      return (x_gap in G.X), x_gap
    end
 end
 
@@ -330,7 +373,7 @@ function (G::MatrixGroup)(x::MatrixGroupElem; check=true)
          _is_true || throw(ArgumentError("Element not in the group"))
          return MatrixGroupElem(G,x.elm,x.X)
       else
-         GAP.Globals.in(x.X, G.X) || throw(ArgumentError("Element not in the group"))
+         x.X in G.X || throw(ArgumentError("Element not in the group"))
          return MatrixGroupElem(G,x.X)
       end
    else
@@ -466,13 +509,13 @@ degree(G::MatrixGroup) = G.deg
 Base.one(G::MatrixGroup) = MatrixGroupElem(G, identity_matrix(G.ring, G.deg))
 
 function Base.rand(rng::Random.AbstractRNG, G::MatrixGroup)
-   x_gap = GAP.Globals.Random(GAP.wrap_rng(rng), G.X)
+   x_gap = GAP.Globals.Random(GAP.wrap_rng(rng), G.X)::GapObj
    return MatrixGroupElem(G, x_gap)
 end
 
 function gens(G::MatrixGroup)
    if !isdefined(G,:gens)
-      L = GAP.Globals.GeneratorsOfGroup(G.X)
+      L = GAP.Globals.GeneratorsOfGroup(G.X)::GapObj
       G.gens = [MatrixGroupElem(G, a) for a in L]
    end
    return G.gens
@@ -483,16 +526,14 @@ gen(G::MatrixGroup, i::Int) = gens(G)[i]
 ngens(G::MatrixGroup) = length(gens(G))
 
 
-compute_order(G::GAPGroup) = fmpz(GAP.Globals.Order(G.X))
+compute_order(G::GAPGroup) = fmpz(GAP.Globals.Order(G.X)::GapInt)
 
 compute_order(G::MatrixGroup{T}) where {T <: Union{nf_elem, fmpq}} = order(isomorphic_group_over_finite_field(G)[1])
 
 function order(::Type{T}, G::MatrixGroup) where T <: IntegerUnion
-   res = get_special(G, :order)
-   if res == nothing
-     res = compute_order(G)::fmpz
-     set_special(G, :order => res)
-   end
+   res = get_attribute!(G, :order) do
+     return compute_order(G)
+   end::fmpz
    return T(res)::T
 end
 
@@ -518,7 +559,7 @@ end
 function general_linear_group(n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   return general_linear_group(n, GF(b,a)[1])
+   return general_linear_group(n, GF(b, a))
 end
 
 """
@@ -537,7 +578,7 @@ end
 function special_linear_group(n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   return special_linear_group(n, GF(b,a)[1])
+   return special_linear_group(n, GF(b, a))
 end
 
 """
@@ -558,7 +599,7 @@ end
 function symplectic_group(n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   return symplectic_group(n, GF(b,a)[1])
+   return symplectic_group(n, GF(b, a))
 end
 
 """
@@ -592,7 +633,7 @@ end
 function orthogonal_group(e::Int, n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   return orthogonal_group(e, n, GF(b,a)[1])
+   return orthogonal_group(e, n, GF(b, a))
 end
 
 orthogonal_group(n::Int, F::Ring) = orthogonal_group(0,n,F)
@@ -630,7 +671,7 @@ end
 function special_orthogonal_group(e::Int, n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   return special_orthogonal_group(e, n, GF(b,a)[1])
+   return special_orthogonal_group(e, n, GF(b, a))
 end
 
 special_orthogonal_group(n::Int, F::Ring) = special_orthogonal_group(0,n,F)
@@ -667,7 +708,7 @@ end
 function omega_group(e::Int, n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   return omega_group(e, n, GF(b,a)[1])
+   return omega_group(e, n, GF(b, a))
 end
 
 omega_group(n::Int, q::Int) = omega_group(0,n,q)
@@ -682,7 +723,7 @@ Return the unitary group of dimension `n` over the field `GF(q^2)`.
 function unitary_group(n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   G = MatrixGroup(n,GF(b,2*a)[1])
+   G = MatrixGroup(n,GF(b, 2*a))
    G.descr = :GU
    return G
 end
@@ -696,7 +737,7 @@ Return the special unitary group of dimension `n` over the field `GF(q^2)`.
 function special_unitary_group(n::Int, q::Int)
    (a,b) = ispower(q)
    isprime(b) || throw(ArgumentError("The field size must be a prime power"))
-   G = MatrixGroup(n,GF(b,2*a)[1])
+   G = MatrixGroup(n,GF(b, 2*a))
    G.descr = :SU
    return G
 end
@@ -726,8 +767,6 @@ end
 matrix_group(V::T...) where T<:Union{MatElem,MatrixGroupElem} = matrix_group(collect(V))
 
 
-
-
 ########################################################################
 #
 # Subgroups
@@ -735,19 +774,18 @@ matrix_group(V::T...) where T<:Union{MatElem,MatrixGroupElem} = matrix_group(col
 ########################################################################
 
 function sub(G::MatrixGroup, elements::Vector{S}) where S <: GAPGroupElem
-   @assert elem_type(G) == S
+   @assert elem_type(G) === S
    elems_in_GAP = GAP.julia_to_gap(GapObj[x.X for x in elements])
-   H = GAP.Globals.Subgroup(G.X,elems_in_GAP)
+   H = GAP.Globals.Subgroup(G.X,elems_in_GAP)::GapObj
    #H is the group. I need to return the inclusion map too
    K,f = _as_subgroup(G, H)
-   L = Vector{MatrixGroupElem}(undef, length(elements))
+   L = Vector{elem_type(K)}(undef, length(elements))
    for i in 1:length(L)
       L[i] = MatrixGroupElem(K, elements[i].elm, elements[i].X)
    end
    K.gens = L
    return K,f
 end
-
 
 
 ########################################################################
@@ -758,13 +796,13 @@ end
 
 function Base.show(io::IO, x::GroupConjClass{T,S}) where T <: MatrixGroup where S <: MatrixGroupElem
   show(io, x.repr)
-  print(" ^ ")
+  print(io, " ^ ")
   show(io, x.X)
 end
 
 function Base.show(io::IO, x::GroupConjClass{T,S}) where T <: MatrixGroup where S <: MatrixGroup
   show(io, x.repr)
-  print(" ^ ")
+  print(io, " ^ ")
   show(io, x.X)
 end
 
@@ -781,33 +819,9 @@ function Base.:^(H::MatrixGroup, y::MatrixGroupElem)
    return K
 end
 
-function conjugacy_classes_subgroups(G::MatrixGroup)
-   L = GAP.Globals.ConjugacyClassesSubgroups(G.X)
-   V = Vector{GroupConjClass{typeof(G), typeof(G)}}(undef, length(L))
-   for i in 1:length(L)
-      y = MatrixGroup(G.deg,G.ring)
-      y.X = GAP.Globals.Representative(L[i])
-      V[i] = _conjugacy_class(G,y,L[i])
-   end
-   return V
-#   return GroupConjClass{typeof(G), typeof(G)}[ _conjugacy_class(G,MatrixGroup(G.deg,G.ring,GAP.Globals.Representative(cc)),cc) for cc in L]
-end
-
-function conjugacy_classes_maximal_subgroups(G::MatrixGroup)
-   L = GAP.Globals.ConjugacyClassesMaximalSubgroups(G.X)
-   V = Vector{GroupConjClass{typeof(G), typeof(G)}}(undef, length(L))
-   for i in 1:length(L)
-      y = MatrixGroup(G.deg,G.ring)
-      y.X = GAP.Globals.Representative(L[i])
-      V[i] = _conjugacy_class(G,y,L[i])
-   end
-   return V
-#   return GroupConjClass{typeof(G), typeof(G)}[ _conjugacy_class(G,MatrixGroup(G.deg,G.ring,GAP.Globals.Representative(cc)),cc) for cc in L]
-end
-
 function Base.rand(rng::Random.AbstractRNG, C::GroupConjClass{S,T}) where S<:MatrixGroup where T<:MatrixGroup
    H = MatrixGroup(C.X.deg,C.X.ring)
-   H.X = GAP.Globals.Random(GAP.wrap_rng(rng), C.CC)
+   H.X = GAP.Globals.Random(GAP.wrap_rng(rng), C.CC)::GapObj
    return H
 end
 

@@ -86,6 +86,7 @@ end
   @test iscyclic(G)
   G1 = abelian_group(PermGroup, [2, 3])
   @test isisomorphic(G, G1)[1]
+  G = abelian_group(PcGroup, [ZZ(2)^70])
 
 # FIXME: a function `free_abelian_group` is not defined in GAPGroups, since it is already defined in Hecke
 #=
@@ -99,7 +100,7 @@ end
 
   F = free_group("x","y")
   @test F isa FPGroup
-  @test_throws ErrorException order(F)
+  @test_throws GroupsCore.InfiniteOrder{FPGroup} order(F)
   @test_throws ErrorException index(F, trivial_subgroup(F)[1])
   @test_throws MethodError degree(F)
   @test !isfinite(F)

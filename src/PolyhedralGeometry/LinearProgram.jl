@@ -5,31 +5,40 @@ The linear program on the feasible set `P` (a Polyhedron) with
 respect to the function x ↦ dot(c,x)+k.
 
 """
-struct LinearProgram
-   feasible_region::Polyhedron
+struct LinearProgram{T}
+   feasible_region::Polyhedron{T}
    polymake_lp::Polymake.BigObject
    convention::Symbol
+   
+   LinearProgram{T}(fr::Polyhedron{T}, lp::Polymake.BigObject, c::Symbol) where T<:scalar_types = new{T}(fr, lp, c)
 end
 
-function LinearProgram(Q::Polyhedron, objective::AbstractVector; k = 0, convention = :max)
+# no default = `fmpq` here; scalar type can be derived from the feasible region
+LinearProgram(p::Polyhedron{T}, x...) where T<:scalar_types = LinearProgram{T}(p, x...)
+
+function LinearProgram{T}(Q::Polyhedron{T}, objective::AbstractVector; k = 0, convention = :max) where T<:scalar_types
    if convention != :max && convention != :min
       throw(ArgumentError("convention must be set to :min or :max."))
    end
-   P=Polyhedron(Polymake.polytope.Polytope(pm_object(Q)))
+   P=Polyhedron{T}(Polymake.polytope.Polytope{scalar_type_to_polymake[T]}(pm_object(Q)))
    ambDim = ambient_dim(P)
    size(objective, 1) == ambDim || error("objective has wrong dimension.")
-   lp = Polymake.polytope.LinearProgram(LINEAR_OBJECTIVE=homogenize(objective, k))
+   lp = Polymake.polytope.LinearProgram{scalar_type_to_polymake[T]}(LINEAR_OBJECTIVE=homogenize(objective, k))
    if convention == :max
       Polymake.attach(lp, "convention", "max")
    elseif convention == :min
       Polymake.attach(lp, "convention", "min")
    end
    pm_object(P).LP = lp
-   LinearProgram(P, lp, convention)
+   LinearProgram{T}(P, lp, convention)
 end
 
-LinearProgram(A::Union{Oscar.MatElem,AbstractMatrix}, b, c::AbstractVector; k = 0, convention = :max) =
-   LinearProgram(Polyhedron(A, b), c;  k = k, convention = convention)
+LinearProgram(Q::Polyhedron{T},  objective::AbstractVector; k = 0, convention = :max) where T<:scalar_types = LinearProgram{T}(Q, objective; k = k, convention = convention)
+
+LinearProgram{T}(A::Union{Oscar.MatElem,AbstractMatrix}, b, c::AbstractVector; k = 0, convention = :max)  where T =
+   LinearProgram{T}(Polyhedron{T}(A, b), c;  k = k, convention = convention)
+
+LinearProgram(x...) = LinearProgram{fmpq}(x...)
 
 
 ###############################################################################
@@ -71,14 +80,14 @@ The allowed values for `as` are
 
 
 """
-function objective_function(lp::LinearProgram; as::Symbol = :pair)
+function objective_function(lp::LinearProgram{T}; as::Symbol = :pair) where T<:scalar_types
    if as == :pair
-      return dehomogenize(lp.polymake_lp.LINEAR_OBJECTIVE),lp.polymake_lp.LINEAR_OBJECTIVE[1]
+      return Vector{T}(dehomogenize(lp.polymake_lp.LINEAR_OBJECTIVE)),convert(T, lp.polymake_lp.LINEAR_OBJECTIVE[1])
    elseif as == :function
       (c,k) = objective_function(lp, as = :pair)
       return x -> sum(x.*c)+k
    else
-       throw(ArgumentError("Unsupported `as` argument :" * string(as)))
+       throw(ArgumentError("Unsupported `as` argument: $as"))
    end
 end
 
@@ -96,45 +105,11 @@ feasible_region(lp::LinearProgram) = lp.feasible_region
 ###############################################################################
 ###############################################################################
 
-"""
-    minimal_vertex(LP::LinearProgram)
-
-Return either a point of the feasible region of `LP` which minimizes the objective
-function of `LP`, or `nothing` if no such point exists.
-
-# Examples
-The following example constructs a linear program over the three dimensional cube.
-Although the linear program is given using the `:max` convention, one may still call
-`minimal_vertex`.
-```jldoctest
-julia> C=cube(3)
-A polyhedron in ambient dimension 3
-
-julia> LP=LinearProgram(C,[1,2,-3])
-The linear program
-   max{c⋅x + k | x ∈ P}
-where P is a Polyhedron and
-   c=Polymake.Rational[1 2 -3]
-   k=0
-
-julia> minimal_vertex(LP)
-pm::Vector<pm::Rational>
--1 -1 1
-```
-"""
-function minimal_vertex(lp::LinearProgram)
-   mv = lp.polymake_lp.MINIMAL_VERTEX
-   if mv != nothing
-      return dehomogenize(mv)
-   else
-      return nothing
-   end
-end
 
 """
-    maximal_vertex(LP::LinearProgram)
+    optimal_vertex(LP::LinearProgram)
 
-Return either a point of the feasible region of `LP` which maximizes the objective
+Return either a point of the feasible region of `LP` which optimizes the objective
 function of `LP`, or `nothing` if no such point exists.
 
 # Examples
@@ -147,19 +122,26 @@ A polyhedron in ambient dimension 3
 julia> LP=LinearProgram(C,[1,2,-3])
 The linear program
    max{c⋅x + k | x ∈ P}
-where P is a Polyhedron and
+where P is a Polyhedron{fmpq} and
    c=Polymake.Rational[1 2 -3]
    k=0
 
-julia> maximal_vertex(LP)
-pm::Vector<pm::Rational>
-1 1 -1
+julia> optimal_vertex(LP)
+3-element PointVector{fmpq}:
+ 1
+ 1
+ -1
 ```
 """
-function maximal_vertex(lp::LinearProgram)
-   mv = lp.polymake_lp.MAXIMAL_VERTEX
-   if mv != nothing
-      return dehomogenize(mv)
+function optimal_vertex(lp::LinearProgram{T}) where T<:scalar_types
+   opt_vert = nothing
+   if lp.convention == :max
+      opt_vert = lp.polymake_lp.MAXIMAL_VERTEX
+   else
+      opt_vert = lp.polymake_lp.MINIMAL_VERTEX
+   end
+   if opt_vert != nothing
+      return PointVector{T}(dehomogenize(opt_vert))
    else
       return nothing
    end
@@ -167,10 +149,10 @@ end
 
 
 """
-    minimal_value(LP::LinearProgram)
+    optimal_value(LP::LinearProgram)
 
-Return, if it exists, the minimal value of the objective function of `LP` over the feasible region
-of `LP`. Otherwise, return `-inf`.
+Return, if it exists, the optimal value of the objective function of `LP` over the feasible region
+of `LP`. Otherwise, return `-inf` or `inf` depending on convention.
 
 # Examples
 The following example constructs a linear program over the three dimensional cube, and
@@ -179,45 +161,28 @@ obtains the minimal value of the function (x,y,z) ↦ x+2y-3z over that cube.
 julia> C=cube(3)
 A polyhedron in ambient dimension 3
 
-julia> LP=LinearProgram(C,[1,2,-3])
+julia> LP=LinearProgram(C,[1,2,-3]; convention = :min)
 The linear program
-   max{c⋅x + k | x ∈ P}
-where P is a Polyhedron and
+   min{c⋅x + k | x ∈ P}
+where P is a Polyhedron{fmpq} and
    c=Polymake.Rational[1 2 -3]
    k=0
 
-julia> minimal_value(LP)
+julia> optimal_value(LP)
 -6
 ```
 """
-minimal_value(lp::LinearProgram) = lp.polymake_lp.MINIMAL_VALUE
+function optimal_value(lp::LinearProgram{T}) where T<:scalar_types
+   if lp.convention == :max
+      # TODO: consider inf
+      # return convert(T, lp.polymake_lp.MAXIMAL_VALUE)
+      return lp.polymake_lp.MAXIMAL_VALUE
+   else
+      # return convert(T, lp.polymake_lp.MINIMAL_VALUE)
+      return lp.polymake_lp.MINIMAL_VALUE
+   end
+end
 
-
-"""
-    maximal_value(LP::LinearProgram)
-
-Return the maximal value of the objective function of `LP` over the feasible region
-of `LP`. Otherwise, return `inf`.
-
-# Examples
-The following example constructs a linear program over the three dimensional cube, and
-obtains the maximal value of the function (x,y,z) ↦ x+2y-3z over that cube.
-```jldoctest
-julia> C=cube(3)
-A polyhedron in ambient dimension 3
-
-julia> LP=LinearProgram(C,[1,2,-3])
-The linear program
-   max{c⋅x + k | x ∈ P}
-where P is a Polyhedron and
-   c=Polymake.Rational[1 2 -3]
-   k=0
-
-julia> maximal_value(LP)
-6
-```
-"""
-maximal_value(lp::LinearProgram) = lp.polymake_lp.MAXIMAL_VALUE
 
 """
     solve_lp(LP::LinearProgram)
@@ -228,9 +193,5 @@ Return a pair `(m,v)` where the optimal value `m` of the objective
  `nothing`.
 """
 function solve_lp(lp::LinearProgram)
-   if lp.convention == :max
-      return maximal_value(lp),maximal_vertex(lp)
-   elseif lp.convention == :min
-      return minimal_value(lp),minimal_vertex(lp)
-   end
+   return optimal_value(lp),optimal_vertex(lp)
 end

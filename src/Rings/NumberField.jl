@@ -4,10 +4,6 @@
 #
 ################################################################################
 
-import Hecke: @req
-
-using Random, RandomExtensions
-
 # We represent number fields as quotients of the form K[x]/I where I is a zero-
 # dimensional irreducible ideal of a multivaraite polynomial ring over the
 # rationals or any number field.
@@ -23,13 +19,12 @@ using Random, RandomExtensions
 
 # We are tagging T to record the element type of the base field. This is needed
 # in Hecke to distinguish between relative and absolute fields.
-mutable struct NfNSGen{T, S} <: Hecke.NonSimpleNumField{T}
+@attributes mutable struct NfNSGen{T, S} <: Hecke.NonSimpleNumField{T}
   I::MPolyIdeal{S}
   S::Vector{Symbol}
   degree::Int
   basis
   auxilliary_data::Vector{Any}
-  AbstractAlgebra.@declare_other
 
   function NfNSGen{U, V}(I, S::Vector{Symbol}) where {U, V}
     Kx = base_ring(I)::parent_type(V)
@@ -192,9 +187,10 @@ function assert_has_gb(K::NfNSGen)
     return nothing
   end
   I = defining_ideal(K)
-  groebner_assure(I)
-  singular_assure(I.gb)
-  I.gb.S.isGB = true
+  groebner_assure(I, degrevlex(gens(base_ring(I))))
+  GI = first(values(I.gb))
+  singular_assure(GI)
+  GI.S.isGB = true
   return nothing
 end
 
@@ -202,9 +198,10 @@ function reduce!(a::NfNSGenElem)
   K = parent(a)
   assert_has_gb(K)
   I = defining_ideal(K)
-  Sx = base_ring(I.gb.S)
+  GI = collect(values(I.gb))[1]
+  Sx = base_ring(GI.S)
   f = a.f
-  a.f = I.gens.Ox(reduce(Sx(f), I.gb.S))
+  a.f = I.gens.Ox(reduce(Sx(f), GI.S))
   return a
 end
 
@@ -550,7 +547,8 @@ function basis(K::NfNSGen; copy::Bool = true)
   else
     I = defining_ideal(K)
     assert_has_gb(K)
-    s = Singular.kbase(I.gb.S)
+    GI = first(values(I.gb))
+    s = Singular.kbase(GI.S)
     if iszero(s)
       error("ideal was not zero-dimensional")
     end
@@ -679,7 +677,7 @@ function minpoly(a::NfNSGenElem)
   Qt, _ = PolynomialRing(k, "t", cached = false)
   while true
     if n % (i-1) == 0 && rank(M) < i
-      N = nullspace(sub(M, 1:i, 1:ncols(M))')
+      N = nullspace(transpose(sub(M, 1:i, 1:ncols(M))))
       @assert N[1] == 1
       v = Vector{elem_type(k)}(undef, i)
       for j in 1:i

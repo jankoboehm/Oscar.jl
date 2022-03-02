@@ -1,38 +1,5 @@
 @testset "Oscar-GAP relationship for finite fields" begin
-
-   @testset for (p,d) in [(2,1),(5,1),(2,4),(3,3),(2,8)]
-      F, _ = GF(p,d)
-      f = Oscar.ring_iso_oscar_gap(F)
-      g = elm -> map_entries(f, elm)
-      for a in F
-         for b in F
-            @test f(a*b)==f(a)*f(b)
-            @test f(a-b)==f(a)-f(b)
-         end
-      end
-      G = GL(4,F)
-      for a in gens(G)
-         for b in gens(G)
-            @test g(a.elm*b.elm)==g(a.elm)*g(b.elm)
-            @test g(a.elm-b.elm)==g(a.elm)-g(b.elm)
-         end
-      end
-   end
-
-   # Test a large non-prime field.
-   # (Oscar chooses a polynomial that is not a Conway polynomial.)
-   p = next_prime(10^6)
-   F, _ = GF(p, 2)
-   f = Oscar.ring_iso_oscar_gap(F)
-   for x in [ F(3), gen(F) ]
-      a = f(x)
-      @test preimage(f, a) == x
-   end
-   @test GAP.Globals.DefiningPolynomial(codomain(f)) !=
-         GAP.Globals.ConwayPolynomial(p, 2)
-   @test GAP.Globals.IsAlgebraicExtension(codomain(f))
-
-   F = GF(29,1)[1]
+   F = GF(29, 1)
    z = F(2)
    G = GL(3,F)
    @test G.X isa GAP.GapObj
@@ -40,7 +7,7 @@
    @test isdefined(G, :ring_iso)
    @test G.ring_iso(z) isa GAP.FFE
    Z = G.ring_iso(z)
-   @test GAP.Globals.IN(Z,codomain(G.ring_iso))
+   @test Z in codomain(G.ring_iso)
    @test preimage(G.ring_iso, Z)==z
    @test domain(G.ring_iso) == F
    @test GAP.Globals.IsField(codomain(G.ring_iso))
@@ -63,7 +30,7 @@
    @test Oscar.preimage_matrix(G.ring_iso, GAP.Globals.One(GAP.Globals.GL(3, codomain(G.ring_iso)))) == one(G).elm
    @test GAP.Globals.Order(map_entries(G.ring_iso, diagonal_matrix([z,z,one(F)]))) == 28
 
-   T,t = PolynomialRing(GF(3),"t")
+   T,t = PolynomialRing(GF(3) ,"t")
    F,z = FiniteField(t^2+1,"z")
    G = GL(3,F)
    @test G.X isa GAP.GapObj
@@ -77,7 +44,7 @@
          @test G.ring_iso(a-b)==G.ring_iso(a)-G.ring_iso(b)
       end
    end
-   @test GAP.Globals.IN(Z,codomain(G.ring_iso))
+   @test Z in codomain(G.ring_iso)
    @test preimage(G.ring_iso, Z)==z
    @test preimage(G.ring_iso, G.ring_iso(F(2)))==F(2)
    @test domain(G.ring_iso) == F
@@ -101,24 +68,12 @@
 end
 
 @testset "Oscar-GAP relationship for cyclotomic fields" begin
-   # for computing random elements of the fields in question
-   my_rand_bits(F::FlintRationalField, b::Int) = rand_bits(F, b)
-   my_rand_bits(F::AnticNumberField, b::Int) = F([rand_bits(QQ, b) for i in 1:degree(F)])
-
    fields = Any[CyclotomicField(n) for n in [1, 3, 4, 5, 8, 15, 45]]
-   push!(fields, (QQ, 1))
+   push!(fields, (QQ, QQ(1)))
 
    @testset for (F, z) in fields
-      f = Oscar.ring_iso_oscar_gap(F)
+      f = Oscar.iso_oscar_gap(F)
       g = elm -> map_entries(f, elm)
-      for i in 1:10
-         a = my_rand_bits(F, 5)
-         for j in 1:10
-            b = my_rand_bits(F, 5)
-            @test f(a*b) == f(a)*f(b)
-            @test f(a - b) == f(a) - f(b)
-         end
-      end
       G = MatrixGroup(3, F)
       mats = [matrix(F, [0 z 0; 0 0 1; 1 0 0]),
               matrix(F, [0 1 0; 1 0 0; 0 0 1])]
@@ -134,7 +89,7 @@ end
       @test isdefined(G, :X)
       @test isdefined(G, :ring_iso)
       Z = G.ring_iso(z)
-      @test GAP.Globals.IN(Z, codomain(G.ring_iso))
+      @test Z in codomain(G.ring_iso)
       @test preimage(G.ring_iso, Z) == z
       @test domain(G.ring_iso) == F
       @test GAP.Globals.IsField(codomain(G.ring_iso))
@@ -155,41 +110,32 @@ end
 end
 
 @testset "faithful reduction from char. zero to finite fields" begin
-   M = matrix(QQ, [ 0 1 0; -1 0 0; 0 0 -1 ])
-   G, g = Oscar.isomorphic_group_over_finite_field(matrix_group([ M ]))
-   for i in 1:10
-     x, y = rand(G), rand(G)
-     @test (g\x) * (g\y) == g\(x * y)
-     @test g(g\x) == x
-   end
-   H = GAP.Globals.Group(GAP.julia_to_gap([ 0 1 0; -1 0 0; 0 0 -1 ]))
-   f = GAP.Globals.GroupHomomorphismByImages(G.X, H)
-   @test GAP.Globals.IsBijective(f)
 
    M = matrix(QQ, [ 2 0; 0 2 ])
    @test_throws ErrorException Oscar.isomorphic_group_over_finite_field(matrix_group([M]))
 
    K, a = CyclotomicField(5, "a")
-   M = matrix(K, [ a 0; 0 a ])
-   G, g = Oscar.isomorphic_group_over_finite_field(matrix_group([M]))
-   for i in 1:10
-     x, y = rand(G), rand(G)
-     @test (g\x) * (g\y) == g\(x * y)
-     @test g(g\x) == x
-   end
-   H = GAP.Globals.Group(GAP.julia_to_gap([ GAP.Globals.E(5) 0; 0 GAP.Globals.E(5) ]))
-   f = GAP.Globals.GroupHomomorphismByImages(G.X, H)
-   @test GAP.Globals.IsBijective(f)
+   L, b = CyclotomicField(3, "b")
 
-   K, a = CyclotomicField(3, "a")
-   M1 = matrix(K, 2, 2, [ a, 0, -a - 1, 1 ])
-   M2 = matrix(K, 2, 2, [ 1, a + 1, 0, a ])
-   G, g = Oscar.isomorphic_group_over_finite_field(matrix_group([ M1, M2 ]))
-   @test order(G) == 24
-   for i in 1:10
-     x, y = rand(G), rand(G)
-     @test (g\x) * (g\y) == g\(x * y)
-     @test g(g\x) == x
+   inputs = [
+     #[ matrix(ZZ, [ 0 1 0; -1 0 0; 0 0 -1 ]) ],
+     [ matrix(QQ, [ 0 1 0; -1 0 0; 0 0 -1 ]) ],
+     [ matrix(K, [ a 0; 0 a ]) ],
+     [ matrix(L, 2, 2, [ b, 0, -b - 1, 1 ]), matrix(L, 2, 2, [ 1, b + 1, 0, b ]) ]
+   ]
+
+   @testset "... over ring $(base_ring(mats[1]))" for mats in inputs
+     G0 = matrix_group(mats)
+     G, g = Oscar.isomorphic_group_over_finite_field(G0)
+     for i in 1:10
+       x, y = rand(G), rand(G)
+       @test (g\x) * (g\y) == g\(x * y)
+       @test g(g\x) == x
+     end
+     H = GAP.Globals.Group(GAP.julia_to_gap(gens(G0); recursive=true))
+     f = GAP.Globals.GroupHomomorphismByImages(G.X, H)
+     @test GAP.Globals.IsBijective(f)
+     @test order(G) == GAP.Globals.Order(H)
    end
 end
 
@@ -204,7 +150,7 @@ end
 
 #FIXME : this may change in future. It can be easily skipped.
 @testset "Fields assignment" begin
-   T,t=PolynomialRing(FiniteField(3),"t")
+   T,t=PolynomialRing(GF(3),"t")
    F,z=FiniteField(t^2+1,"z")
 
    G = GL(2,F)
@@ -224,6 +170,7 @@ end
 
    @test ngens(G)==2
    @test isdefined(G,:gens)
+   @test typeof(gens(G)) == Vector{elem_type(G)}
 
    x = matrix(F,2,2,[1,0,0,1])
    x = G(x)
@@ -244,6 +191,7 @@ end
    H,f = sub(G,[x,y])
    @test isdefined(H,:gens)
    @test gens(H)==[x,y]
+   @test typeof(gens(H)) == Vector{elem_type(H)}
    @test H==SL(2,F)
    @test parent(x)==G
    @test parent(H[1])==H
@@ -257,6 +205,7 @@ end
    @test isdefined(K, :gens)
    @test !isdefined(K,:X)
    @test K.gens==[x,x^2,y]
+   @test typeof(gens(K)) == Vector{elem_type(K)}
    @test parent(x)==G
    @test x==K[1]                           #TODO changes in future if we decide to keep track of the parent
    @test parent(K[1])==K
@@ -285,7 +234,7 @@ end
 
 @testset "Constructors" begin
    @testset for n in 4:5
-      @testset for F in [GF(2,2)[1], GF(3,1)[1]]
+      @testset for F in [GF(2, 2), GF(3, 1)]
          q = Int(order(F))
          G = GL(n,F)
          S = SL(n,F)
@@ -309,7 +258,7 @@ end
    end
 
    @testset for n in [4,6]
-      @testset for F in [GF(2,2)[1], GF(3,1)[1]]
+      @testset for F in [GF(2, 2), GF(3, 1)]
          q = Int(order(F))
          G = Sp(n,F)
          @test G==Sp(n,q)
@@ -318,7 +267,7 @@ end
       end
    end
 
-   @testset for F in [GF(3,1)[1], GF(2,2)[1], GF(5,1)[1]]
+   @testset for F in [GF(3, 1), GF(2, 2), GF(5, 1)]
       q = Int(order(F))
       @testset for n in [4,6]
          @testset for e in [+1,-1]
@@ -428,7 +377,7 @@ end
 end
 
 @testset "Membership" begin
-   T,t=PolynomialRing(FiniteField(3),"t")
+   T,t=PolynomialRing(GF(3),"t")
    F,z=FiniteField(t^2+1,"z")
 
    G = GL(2,F)
@@ -479,7 +428,7 @@ end
 end
 
 @testset "Methods on elements" begin
-   T,t=PolynomialRing(FiniteField(3),"t")
+   T,t=PolynomialRing(GF(3),"t")
    F,z=FiniteField(t^2+1,"z")
 
    G = GL(2,F)
@@ -523,7 +472,7 @@ end
 end
 
 @testset "Subgroups" begin
-   T,t=PolynomialRing(FiniteField(3),"t")
+   T,t=PolynomialRing(GF(3),"t")
    F,z=FiniteField(t^2+1,"z")
 
    G = GL(2,F)
@@ -548,7 +497,7 @@ end
 end
 
 @testset "Cosets and conjugacy classes" begin
-   T,t=PolynomialRing(FiniteField(3),"t")
+   T,t=PolynomialRing(GF(3),"t")
    F,z=FiniteField(t^2+1,"z")
 
    G = GL(2,F)
@@ -585,12 +534,12 @@ end
 
    G = GL(2,3)
    @test length(conjugacy_classes(G))==8
-   @test length(conjugacy_classes_subgroups(G))==16
-   @test length(conjugacy_classes_maximal_subgroups(G))==3
+   @test length(@inferred conjugacy_classes_subgroups(G))==16
+   @test length(@inferred conjugacy_classes_maximal_subgroups(G))==3
 end
 
 @testset "Jordan structure" begin
-   F = GF(3,1)[1]
+   F = GF(3, 1)
    R,t = PolynomialRing(F,"t")
    G = GL(9,F)
 
@@ -626,7 +575,7 @@ end
    x = one(G)
    @test issemisimple(x) && isunipotent(x)
 
-   F,z = GF(5,3,"z")
+   F,z = FiniteField(5,3,"z")
    G = GL(6,F)
    R,t = PolynomialRing(F,"t")
    f = t^3+t*z+1
@@ -641,37 +590,88 @@ end
 
    @testset "Low-level methods in linear_centralizer.jl" begin
       @test Oscar._SL_order(3,fmpz(8))== fmpz(div(prod([8^3-8^i for i in 0:2]),7))
-      @test Oscar._SL_order(4,GF(3,1)[1])== fmpz(div(prod([3^4-3^i for i in 0:3]),2))
-      L = Oscar._gens_for_GL(1,GF(7,1)[1])
+      @test Oscar._SL_order(4, GF(3, 1))== fmpz(div(prod([3^4-3^i for i in 0:3]),2))
+      L = Oscar._gens_for_GL(1,GF(7, 1))
       @test length(L)==1
       @test L[1]^2 !=1 && L[1]^3 !=1
-      L = Oscar._gens_for_GL(4,GF(2,2)[1])
+      L = Oscar._gens_for_GL(4,GF(2, 2))
       @test length(L)==2
-      @test matrix_group(L...)==GL(4,GF(2,2)[1])
-      L = Oscar._gens_for_SL(5,GF(3,1)[1])
-      @test matrix_group(L...)==SL(5,GF(3,1)[1])
-      L = Oscar._gens_for_GL(5,GF(2,1)[1])
+      @test matrix_group(L...)==GL(4,GF(2, 2))
+      L = Oscar._gens_for_SL(5,GF(3, 1))
+      @test matrix_group(L...)==SL(5,GF(3, 1))
+      L = Oscar._gens_for_GL(5,GF(2, 1))
       @test length(L)==2
-      @test matrix_group(L...)==GL(5,GF(2,1)[1])
-      _,t = PolynomialRing(GF(3,1)[1],"t")
+      @test matrix_group(L...)==GL(5,GF(2, 1))
+      _,t = PolynomialRing(GF(3, 1),"t")
       f = t^2+t-1
-      L = Oscar._gens_for_GL_matrix(f,2,GF(3,1)[1]; D=2)
+      L = Oscar._gens_for_GL_matrix(f,2,GF(3, 1); D=2)
       @test length(L)==2
       @test nrows(L[1])==8
       @test L[1]^8==1
       @test L[2]^3==1
       @test order(matrix_group(L...))==order(GL(2,9))
-      L = Oscar._gens_for_SL_matrix(f,2,GF(3,1)[1]; D=2)
+      L = Oscar._gens_for_SL_matrix(f,2,GF(3, 1); D=2)
       @test length(L)==3
       @test nrows(L[1])==8
       @test L[1]^8==1
       @test L[2]^3==1
       @test order(matrix_group(L...))==div(order(GL(2,9)),2)
       x = cat([generalized_jordan_block(f,n) for n in [1,1,1,2,2,3]]..., dims=(1,2))
-      L,c = Oscar._centr_block_unipotent(f,GF(3,1)[1],[1,1,1,2,2,3])
+      L,c = Oscar._centr_block_unipotent(f,GF(3, 1),[1,1,1,2,2,3])
       @testset for l in L
          @test l*x==x*l
       end
       @test c==order(GL(3,9))*order(GL(2,9))*8*BigInt(9)^32
    end
+end
+
+@testset "isometry group" begin
+   q = quadratic_space(QQ,QQ[2 1; 1 2])
+   L = lattice(q, QQ[1 0; 0 1])
+   G = isometry_group(L)
+   @test order(G) == 12
+   @test isometry_group(L) == orthogonal_group(L)
+   # L = lattice(q, QQ[0 0; 0 0], isbasis=false)
+   # @test order(isometry_group(L)) == 1
+
+   Qx, x = PolynomialRing(FlintQQ, "x", cached = false)
+   f = x^2-2;
+   K, a = number_field(f)
+   D = matrix(K, 3, 3, [2, 0, 0, 0, 1, 0, 0, 0, 7436]);
+   gens = [[13, 0, 0], [156*a+143, 0, 0], [3//2*a+5, 1, 0], [3//2*a+5, 1, 0], [21//2*a, 0, 1//26], [21//2*a, 0, 1//26]]
+   L = quadratic_lattice(K, generators = gens, gram_ambient_space = D)
+   G = orthogonal_group(L)
+   g = -identity_matrix(K, 3)
+   @test g in G
+end
+
+@testset "deepcopy" begin
+   g = general_linear_group(2, 4)
+
+   m = MatrixGroupElem(g, gen(g, 1).X);  # do not call `show`!
+   @test isdefined(m, :X)
+   @test ! isdefined(m, :elm)
+   c = deepcopy(m);
+   @test isdefined(c, :X)
+   @test ! isdefined(c, :elm)
+   @test c.X == m.X
+
+   m = MatrixGroupElem(g, gen(g, 1).elm, gen(g, 1).X)
+   @test isdefined(m, :X)
+   @test isdefined(m, :elm)
+   c = deepcopy(m);
+   @test isdefined(c, :X)
+   @test isdefined(c, :elm)
+   @test c.X == m.X
+   @test c.elm == m.elm
+
+   m = MatrixGroupElem(g, gen(g, 1).elm)
+   @test ! isdefined(m, :X)
+   @test isdefined(m, :elm)
+   c = deepcopy(m);
+   @test ! isdefined(c, :X)
+   @test isdefined(c, :elm)
+   @test c.elm == m.elm
+
+   @test deepcopy([one(g)]) == [one(g)]
 end

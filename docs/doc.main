@@ -16,6 +16,7 @@
      "Groups/autgroup.md",
      "Groups/grouplib.md",
      "Hecke/abelian/introduction.md",
+     "Groups/group_characters.md",
   ],
 
   "Rings" => [
@@ -100,6 +101,7 @@
      ],
       "PolyhedralGeometry/cones.md",
       "PolyhedralGeometry/fans.md",
+      "PolyhedralGeometry/polyhedral_complexes.md",
       "PolyhedralGeometry/linear_programs.md",
       "PolyhedralGeometry/subdivisions_of_points.md",
   ],
@@ -122,32 +124,47 @@
   ],
 
   "Algebraic Geometry" => [
-#     "Curves" => [
+     "AlgebraicGeometry/intro.md",
+     "Curves" => [
 #        "Experimental/introduction.md",
 #        "Experimental/plane_curves.md",
 #        "Experimental/divisors.md",
 #        "Experimental/elliptic_curves.md",
 #        "Experimental/non_plane_curves.md",
-#     ],
+         "AlgebraicGeometry/para_rational_curves.md",
+     ],
      "Toric Varieties" => [
         "ToricVarieties/intro.md",
         "ToricVarieties/NormalToricVarieties.md",
         "ToricVarieties/CyclicQuotientSingularities.md",
         "ToricVarieties/ToricDivisors.md",
+        "ToricVarieties/ToricDivisorClasses.md",
+        "ToricVarieties/ToricLineBundles.md",
+     ],
+     "Schemes" => [
+        "AlgebraicGeometry/AffineSchemes.md",
      ],
   ],
 
   "Combinatorics" => [
       "Combinatorics/graphs.md",
+      "Combinatorics/simplicialcomplexes.md",
   ],
 
 
   "General" => [
-     "General/styleguide.md",
+     "General/architecture.md",
      "General/other.md",
      "General/faq.md",
   ],
 
   "References" => "references.md",
   "Index" => "manualindex.md",
+  "Developer Documentation" => [
+    "DeveloperDocumentation/styleguide.md",
+    "DeveloperDocumentation/build_documentation.md",
+    "Polyhedral Geometry" => [
+        "DeveloperDocumentation/SubObjectIterator.md",
+    ],
+  ],
 ]

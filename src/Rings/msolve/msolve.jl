@@ -3,7 +3,7 @@ import msolve_jll: libmsolve
 export msolve
 
 @doc Markdown.doc"""
-    function get_rational_parametrization(nr::Int32, lens::Array{Int32,1}, cfs::Ptr{BigInt})
+    get_rational_parametrization(nr::Int32, lens::Array{Int32,1}, cfs::Ptr{BigInt})
 
 Construct the rational parametrization of the solution set computed via msolve.
 
@@ -77,17 +77,10 @@ function msolve(
         info_level::Int=0,                    # info level for print outs
         precision::Int=32                     # precision of the solution set
         )
-    singular_assure(I)
-    SI    = I.gens.S
-    R     = I.gens.Sx
-    # skip zero generators in ideal
-    ptr = Singular.libSingular.id_Copy(SI.ptr, R.ptr)
-    J   = Singular.Ideal(R, ptr)
-    Singular.libSingular.idSkipZeroes(J.ptr)
-    # get number of variables
-    nr_vars = Singular.nvars(R)
-    nr_gens = Singular.ngens(J)
-    vars    = Singular.gens(R)
+    R = base_ring(I)
+    nr_vars     = nvars(R)
+    nr_gens     = ngens(I)
+    field_char  = Int(characteristic(R))
 
     variable_names = map(string, Singular.symbols(R))
 
@@ -107,7 +100,7 @@ function msolve(
         error("At the moment msolve only supports the rationals as ground field.")
     end
     # convert Singular ideal to flattened arrays of ints
-    lens, cfs, exps   = convert_singular_ideal_to_array(J)
+    lens, cfs, exps   = convert_oscar_ideal_to_array(I)
 
     res_ld    = Ref(Cint(0))
     res_dim   = Ref(Cint(0))
@@ -121,8 +114,9 @@ function msolve(
     ccall((:msolve_julia, libmsolve), Cvoid,
         (Ptr{Nothing}, Ptr{Cint}, Ptr{Cint}, Ptr{Cint}, Ptr{Ptr{Cint}},
         Ptr{Cvoid}, Ptr{Cint}, Ptr{Cvoid}, Ptr{Ptr{Cint}}, Ptr{Cint},
-        Ptr{Cint}, Ptr{Cvoid}, Ptr{Ptr{Cchar}}, Ptr{Cchar}, Int, Int,
-        Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int),
+        Ptr{Cint}, Ptr{Cvoid}, Ptr{Ptr{Cchar}}, Ptr{Cchar}, Cint, Cint,
+        Cint, Cint, Cint, Cint, Cint, Cint, Cint, Cint, Cint, Cint,
+        Cint, Cint, Cint),
         cglobal(:jl_malloc), res_ld, res_dim, res_dquot, res_len, res_cf,
         nb_sols, sols_num, sols_den, lens, exps, cfs, variable_names,
         "/dev/null", field_char, mon_order, elim_block_size, nr_vars,
@@ -145,7 +139,6 @@ function msolve(
         error("Dimension of ideal is greater than zero, no solutions provided.")
     end
     if jl_nb_sols == 0
-        @info "The system has no solution."
         return [], Vector{fmpq}[]
     end
 
@@ -172,7 +165,7 @@ function msolve(
 
     ccall((:free_msolve_julia_result_data, libmsolve), Nothing ,
           (Ptr{Nothing}, Ptr{Ptr{Cint}}, Ptr{Ptr{Cvoid}},
-           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cint}}, Int, Int, Int),
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cint}}, Cint, Cint, Cint),
           cglobal(:jl_free), res_len, res_cf, sols_num, sols_den,
           jl_ld, jl_nb_sols, field_char)
 

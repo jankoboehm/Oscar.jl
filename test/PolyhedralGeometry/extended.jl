@@ -21,12 +21,12 @@
     end
 
     @testset "conformance tests" begin
-        @test typeof(Cone1) == Cone
-        @test typeof(Q0) == Polyhedron
-        @test typeof(Q1) == Polyhedron
-        @test typeof(Q2) == Polyhedron
-        @test typeof(C0) == Polyhedron
-        @test typeof(C1) == Polyhedron
+        @test typeof(Cone1) == Cone{fmpq}
+        @test typeof(Q0) == Polyhedron{fmpq}
+        @test typeof(Q1) == Polyhedron{fmpq}
+        @test typeof(Q2) == Polyhedron{fmpq}
+        @test typeof(C0) == Polyhedron{fmpq}
+        @test typeof(C1) == Polyhedron{fmpq}
         @test typeof(Q0 == Q0) == Bool
         @test typeof(Q0 == Q1) == Bool
         @test typeof(Q0 != Q0) == Bool
@@ -40,13 +40,13 @@
     end
 
     @testset "convex_hull" begin
-        @test size(matrix(vertices(Q0))) == (3, 2)
-        @test size(matrix(vertices(Q1))) == (3, 2)
-        @test size(matrix(rays(Q1))) == (1, 2)
-        @test size(matrix(lineality_space(Q1))) == (0, 2)
-        @test size(matrix(vertices(Q2))) == (2, 2)
-        @test size(matrix(rays(Q2))) == (0, 2)
-        @test size(matrix(lineality_space(Q2))) == (1, 2)
+        @test size(point_matrix(vertices(Q0))) == (3, 2)
+        @test size(point_matrix(vertices(Q1))) == (3, 2)
+        @test size(vector_matrix(rays(Q1))) == (1, 2)
+        @test size(generator_matrix(lineality_space(Q1))) == (0, 2)
+        @test size(point_matrix(vertices(Q2))) == (2, 2)
+        @test size(vector_matrix(rays(Q2))) == (0, 2)
+        @test size(generator_matrix(lineality_space(Q2))) == (1, 2)
         @test dim(Q0) == 2
         @test dim(Q1) == 2
         @test dim(Q2) == 2
@@ -56,7 +56,7 @@
     end
 
     @testset "standard constructions" begin
-        @test size(matrix(vertices(C0))) == (4,2)
+        @test size(point_matrix(vertices(C0))) == (4, 2)
         @test C0 == convex_hull(vertices(C0))
         @test isbounded(C0)
         @test issmooth(C0)
@@ -73,29 +73,38 @@
         f = sum([x; 1])^2 + x[1]^4 * x[2] * 3
         newt = newton_polytope(f)
         @test dim(newt) == 2
-        @test vertices(newt).m == [4 1; 2 0; 0 2; 0 0]
+        @test point_matrix(vertices(newt)) == matrix(QQ, [4 1; 2 0; 0 2; 0 0])
     end
 
     @testset "Construct from fmpq" begin
         A = zeros(Oscar.QQ, 3, 2)
         A[1, 1] = 1
         A[3, 2] = 4
-        @test vertices(convex_hull(A)).m == [1 0; 0 0; 0 4]
+        @test point_matrix(vertices(convex_hull(A))) == matrix(QQ, [1 0; 0 0; 0 4])
 
         lhs, rhs = halfspace_matrix_pair(facets(Polyhedron(A, [1, 2, -3])))
-        @test lhs == matrix(QQ, [1 0; 0 4; 0 0])
-        @test rhs == [1, -3, 1]
+        @test lhs == matrix(QQ, [1 0; 0 4])
+        @test rhs == [1, -3]
     end
 
     @testset "Construct from fmpz" begin
         A = zeros(Oscar.ZZ, 3, 2)
         A[1, 1] = 1
         A[3, 2] = 4
-        @test vertices(convex_hull(A)).m == [1 0; 0 0; 0 4]
+        @test point_matrix(vertices(convex_hull(A))) == matrix(QQ, [1 0; 0 0; 0 4])
 
         lhs, rhs = halfspace_matrix_pair(facets(Polyhedron(A, [1, 2, -3])))
-        @test lhs == matrix(QQ, [1 0; 0 4; 0 0])
-        @test rhs == [1, -3, 1]
+        @test lhs == matrix(QQ, [1 0; 0 4])
+        @test rhs == [1, -3]
+    end
+    
+    @testset "SubObjectIterator compatibility" begin
+        Pos_poly = convex_hull([0 0 0], [1 0 0; 0 1 0; 0 0 1])
+        Pos_cone = positive_hull([1 0 0; 0 1 0; 0 0 1])
+        @test cone_from_inequalities(facets(Pos_cone)) == Pos_cone
+        @test cone_from_inequalities(facets(Pos_poly)) == Pos_cone
+        @test Polyhedron(facets(Pos_cone)) == Pos_poly
+        @test Polyhedron(facets(Pos_poly)) == Pos_poly
     end
 
 end # of @testset "OscarPolytope"

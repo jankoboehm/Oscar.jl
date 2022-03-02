@@ -22,7 +22,8 @@ Return the `i`-th group in the catalogue of primitive groups of degree `n`
 in GAP's Primitive Groups Library. The output is a group of type `PermGroup`.
 """
 function primitive_group(deg::Int, n::Int)
-   @assert n<= number_primitive_groups(deg) "There are less than $n primitive groups of degree $deg."
+   N = number_primitive_groups(deg)
+   @assert n <= N "There are only $N primitive groups of degree $deg."
    return PermGroup(GAP.Globals.PrimitiveGroup(deg,n), deg)
 end
 
@@ -68,8 +69,7 @@ function all_primitive_groups(L...)
    pos+=1
    end
    if isargument L1[length(L1)]=true end
-   L1 = GAP.julia_to_gap(L1)
 
-   K = GAP.Globals.CallFuncList(GAP.Globals.AllPrimitiveGroups,L1)
-   return [PermGroup(K[i]) for i in 1:length(K)]          # GAP.julia_to_gap(K) does not work
+   K = GAP.Globals.AllPrimitiveGroups(L1...)
+   return [PermGroup(x) for x in K]          # GAP.julia_to_gap(K) does not work
 end

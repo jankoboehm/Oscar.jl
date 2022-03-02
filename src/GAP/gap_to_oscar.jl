@@ -2,103 +2,239 @@
 ## (extends the conversions from GAP.jl's `src/gap_to_julia.jl` and
 ## `src/constructors.jl`, where low level Julia objects are treated)
 
-import GAP: gap_to_julia
-import Nemo: FlintIntegerRing, FlintRationalField, MatrixSpace, fmpz, fmpq, fmpz_mat, fmpq_mat
-
+##
 ## GAP integer to `fmpz`
-GAP.gap_to_julia(::Type{fmpz}, obj::Int64) = fmpz(obj)
-function GAP.gap_to_julia(::Type{fmpz}, obj::GAP.GapObj)
+##
+function fmpz(obj::GapObj)
     GAP.GAP_IS_INT(obj) || throw(GAP.ConversionError(obj, fmpz))
-    GC.@preserve obj fmpz(GAP.ADDR_OBJ(obj), div(GAP.SIZE_OBJ(obj), sizeof(Int)))
+    result = GC.@preserve obj fmpz(GAP.ADDR_OBJ(obj), div(GAP.SIZE_OBJ(obj), sizeof(Int)))
+    obj < 0 && Nemo.neg!(result, result)
+    return result
 end
 
-fmpz(obj::GAP.GapObj) = gap_to_julia(fmpz, obj)
+GAP.gap_to_julia(::Type{fmpz}, obj::GapInt) = fmpz(obj)
+(::FlintIntegerRing)(obj::GapObj) = fmpz(obj)
 
-(::FlintIntegerRing)(obj::GAP.GapObj) = gap_to_julia(fmpz, obj)
-
+##
 ## large GAP rational or integer to `fmpq`
-GAP.gap_to_julia(::Type{fmpq}, obj::Int64) = fmpq(obj)
-function GAP.gap_to_julia(::Type{fmpq}, obj::GAP.GapObj)
+##
+function fmpq(obj::GapObj)
     GAP.GAP_IS_INT(obj) && return fmpq(fmpz(obj))
     GAP.GAP_IS_RAT(obj) || throw(GAP.ConversionError(obj, fmpq))
-    return fmpq(fmpz(GAP.Globals.NumeratorRat(obj)), fmpz(GAP.Globals.DenominatorRat(obj)))
+    return fmpq(fmpz(GAPWrap.NumeratorRat(obj)), fmpz(GAPWrap.DenominatorRat(obj)))
 end
 
-fmpq(obj::GAP.GapObj) = gap_to_julia(fmpq, obj)
+GAP.gap_to_julia(::Type{fmpq}, obj::GapInt) = fmpq(obj)
+(::FlintRationalField)(obj::GapObj) = fmpq(obj)
 
-(::FlintRationalField)(obj::GAP.GapObj) = gap_to_julia(fmpq, obj)
+###
+### GAP finite field elements to Oscar (generically)
+###
 
-## matrix of GAP integers to `fmpz_mat`
-function GAP.gap_to_julia(::Type{fmpz_mat}, obj::GAP.GapObj)
-    m = GAP.gap_to_julia(Matrix{fmpz}, obj)
-    return fmpz_mat(size(m, 1), size(m, 2), m)
-end
+# TODO: the following could be made faster for GAP.FFE by extracting the
+# characteristic directly from the GAP FFE
+characteristic(x::GAP.FFE) = fmpz(GAPWrap.CHAR_FFE_DEFAULT(x))
+characteristic(x::GapObj) = fmpz(GAPWrap.Characteristic(x))
 
-fmpz_mat(obj::GAP.GAP.GapObj) = gap_to_julia(fmpz_mat, obj)
+# test code for producing an FFE:  `GAP.Globals.Z(5)`
+function (F::FinField)(x::GAP.FFE)
+    characteristic(x) == characteristic(F) || error("characteristic does not match")
 
-## matrix of GAP rationals or integers to `fmpq_mat`
-function GAP.gap_to_julia(::Type{fmpq_mat}, obj::GAP.GapObj)
-    m = GAP.gap_to_julia(Matrix{fmpq}, obj)
-    return matrix(FlintQQ, m)
-end
-
-fmpq_mat(obj::GAP.GAP.GapObj) = gap_to_julia(fmpq_mat, obj)
-
-## cache default bases of GAP's cyclotomic fields
-const default_bases_GAP_cyclotomic_fields = AbstractAlgebra.WeakValueDict{Int64, GAP.GapObj}()
-
-function default_basis_GAP_cyclotomic_field(N::Int64, F::GAP.GapObj = GAP.Globals.CyclotomicField(N))
-    get!(default_bases_GAP_cyclotomic_fields, N) do
-      root = GAP.Globals.E(N)
-      elms = [root^i for i in 0:(euler_phi(N)-1)]
-      return GAP.Globals.Basis(F, GAP.GapObj(elms))
+    if GAPWrap.DegreeFFE(x) == 1
+        # FFE in GAP only exist for "small" characteristic, so we know the int
+        # value fits into an Int; telling Julia about this via a type assertion
+        # results in slightly better code
+        val = GAPWrap.INT_FFE_DEFAULT(x)::Int
+        return F(val)
     end
+
+    # HACK: use `iso_oscar_gap` for now, until `iso_gap_oscar` becomes available
+    iso = iso_oscar_gap(F)
+    return preimage(iso, x)
 end
+
+# test code for producing a gap finite field element not stored as FFE:  `GAP.Globals.Z(65537)`
+function (F::FinField)(x::GapObj)
+    GAP.GAP_IS_INT(x) && return F(fmpz(x))
+    GAPWrap.IsFFE(x) || error("<x> must be a GAP large integer or a GAP finite field element")
+    characteristic(x) == characteristic(F) || error("characteristic does not match")
+
+    if GAPWrap.DegreeFFE(x) == 1
+        val = GAPWrap.IntFFE(x)
+        return F(val)
+    end
+
+    # HACK: use `iso_oscar_gap` for now, until `iso_gap_oscar` becomes available
+    iso = iso_oscar_gap(F)
+    return preimage(iso, x)
+end
+
+##
+## matrix conversion
+##
+
+function __ensure_gap_matrix(obj::GapObj)
+    GAPWrap.IsMatrixOrMatrixObj(obj) || throw(ArgumentError("<obj> is not a GAP matrix"))
+end
+
+##
+## matrix of GAP integers to `fmpz_mat`
+##
+function fmpz_mat(obj::GapObj)
+    __ensure_gap_matrix(obj)
+    nrows = GAPWrap.NrRows(obj)
+    ncols = GAPWrap.NrCols(obj)
+    m = zero_matrix(ZZ, nrows, ncols)
+    for i in 1:nrows, j in 1:ncols
+        x = obj[i,j]
+        @inbounds m[i,j] = x isa Int ? x : fmpz(x::GapObj)
+    end
+    return m
+end
+
+GAP.gap_to_julia(::Type{fmpz_mat}, obj::GapObj) = fmpz_mat(obj) # TODO: deprecate/remove this
+
+##
+## matrix of GAP rationals or integers to `fmpq_mat`
+##
+function fmpq_mat(obj::GapObj)
+    __ensure_gap_matrix(obj)
+    nrows = GAPWrap.NrRows(obj)
+    ncols = GAPWrap.NrCols(obj)
+    m = zero_matrix(QQ, nrows, ncols)
+    for i in 1:nrows, j in 1:ncols
+        x = obj[i,j]
+        @inbounds m[i,j] = x isa Int ? x : fmpq(x::GapObj)
+    end
+    return m
+end
+
+GAP.gap_to_julia(::Type{fmpq_mat}, obj::GapObj) = fmpq_mat(obj) # TODO: deprecate/remove this
+
+##
+## generic matrix() method for GAP matrices which converts each element on its
+## own: this is inefficient but almost always works, so we use it as our base
+## case
+##
+function matrix(R::Ring, obj::GapObj)
+    # TODO: add special code for compressed matrices, resp. MatrixObj, so that
+    # we can perform the characteristic check once, instead of nrows*ncols
+    # times
+    __ensure_gap_matrix(obj)
+    nrows = GAPWrap.NrRows(obj)
+    ncols = GAPWrap.NrCols(obj)
+    m = zero_matrix(R, nrows, ncols)
+    for i in 1:nrows, j in 1:ncols
+        x = obj[i,j]::Union{Int,GapObj,GAP.FFE} # type annotation so Julia generates better code
+        @inbounds m[i,j] = x isa Int ? x : R(x)
+    end
+    return m
+end
+
+# also allow map_entries to make Claus happy ;-)
+map_entries(R::Ring, obj::GapObj) = matrix(R, obj)
+
+# TODO: cache conversion tables
 
 ## single GAP cyclotomic to element of cyclotomic field
-function (F::AnticNumberField)(obj::GAP.GapObj)
+function (F::AnticNumberField)(obj::GapInt)
     Nemo.iscyclo_type(F) || throw(ArgumentError("F is not a cyclotomic field"))
-    GAP.Globals.IsCyclotomic(obj) || throw(ArgumentError("input is not a GAP cyclotomic"))
-    N = Oscar.get_special(F, :cyclo)
-    mod(N, GAP.Globals.Conductor(obj)) == 0 || throw(ArgumentError("obj does not embed into F"))
-
-    B = default_basis_GAP_cyclotomic_field(N)
-    return F(Vector{fmpz}(GAP.Globals.Coefficients(B, obj)))
+    GAPWrap.IsCyc(obj) || throw(ArgumentError("input is not a GAP cyclotomic"))
+    N = get_attribute(F, :cyclo)
+    mod(N, GAPWrap.Conductor(obj)) == 0 || throw(ArgumentError("obj does not embed into F"))
+    return preimage(iso_oscar_gap(F), obj)
 end
 
-## nonempty list of GAP matrices over the same cyclotomic field
-function matrices_over_cyclotomic_field(gapmats::GAP.GapObj)
+## single GAP cyclotomic to `QabElem`
+function QabElem(a::GapInt)
+  c = GAPWrap.Conductor(a)
+  E = abelian_closure(QQ)[2](c)
+  z = parent(E)(0)
+  co = GAP.Globals.CoeffsCyc(a, c)
+  for i=1:c
+    if !iszero(co[i])
+      z += fmpq(co[i])*E^(i-1)
+    end
+  end
+  return z
+end
+
+GAP.gap_to_julia(::Type{QabElem}, a::GapInt) = QabElem(a)
+
+(::QabField)(a::GAP.GapObj) = GAP.gap_to_julia(QabElem, a)
+
+## nonempty list of GAP matrices over a given cyclotomic field
+function matrices_over_cyclotomic_field(F::AnticNumberField, gapmats::GapObj)
+    Nemo.iscyclo_type(F) || throw(ArgumentError("F is not a cyclotomic field"))
     GAPWrap.IsList(gapmats) || throw(ArgumentError("gapmats is not a GAP list"))
-    GAP.Globals.IsEmpty(gapmats) && throw(ArgumentError("gapmats is empty"))
-    GAP.Globals.ForAll(gapmats, GAP.Globals.IsCyclotomicCollColl) ||
+    GAPWrap.IsEmpty(gapmats) && throw(ArgumentError("gapmats is empty"))
+    GAP.Globals.IsCyclotomicCollCollColl(gapmats) ||
       throw(ArgumentError("gapmats is not a GAP list of matrices of cyclotomics"))
 
-    gapF = GAP.Globals.FieldOfMatrixList(gapmats)
-    N = GAP.Globals.Conductor(gapF)
-    B = default_basis_GAP_cyclotomic_field(N, gapF)
-    F, z = CyclotomicField(N)
-
+    iso = iso_oscar_gap(F)
     result = dense_matrix_type(F)[]
     for mat in gapmats
-      m = GAPWrap.NumberRows(mat)
-      n = GAPWrap.NumberColumns(mat)
-      entries = [F(Vector{fmpz}(GAP.Globals.Coefficients(B, mat[i, j])))
-                 for i in 1:m, j in 1:n]
+      m = GAPWrap.NrRows(mat)
+      n = GAPWrap.NrCols(mat)
+      entries = [preimage(iso, mat[i, j]) for i in 1:m, j in 1:n]
       push!(result, matrix(F, entries))
     end
 
-    return result, F, z
+    return result, F, gen(F)
 end
 
+## nonempty list of GAP matrices over the same cyclotomic field
+## (backwards compatibility)
+matrices_over_cyclotomic_field(gapmats::GapObj) = matrices_over_field(gapmats)
+
 ## single GAP matrix of cyclotomics
-function matrix(F::AnticNumberField, mat::GAP.GapObj)
+function matrix(F::AnticNumberField, mat::GapObj)
+    __ensure_gap_matrix(mat)
     Nemo.iscyclo_type(F) || throw(ArgumentError("F is not a cyclotomic field"))
-    (GAP.Globals.IsCyclotomicCollColl(mat) && GAP.Globals.IsMatrixOrMatrixObj(mat)) || throw(ArgumentError("mat is not a GAP matrix of cyclotomics"))
-    N = Oscar.get_special(F, :cyclo)
-    B = default_basis_GAP_cyclotomic_field(N)
-    m = GAPWrap.NumberRows(mat)
-    n = GAPWrap.NumberColumns(mat)
-    entries = [F(Vector{fmpz}(GAP.Globals.Coefficients(B, mat[i, j])))
-               for i in 1:m, j in 1:n]
+    GAPWrap.IsCyclotomicCollColl(mat) || throw(ArgumentError("mat is not a GAP matrix of cyclotomics"))
+    m = GAPWrap.NrRows(mat)
+    n = GAPWrap.NrCols(mat)
+    iso = iso_oscar_gap(F)
+    entries = [preimage(iso, mat[i, j]) for i in 1:m, j in 1:n]
     return matrix(F, entries)
+end
+
+## nonempty list of GAP matrices over the same field
+function matrices_over_field(gapmats::GapObj)
+    GAPWrap.IsList(gapmats) || throw(ArgumentError("gapmats is not a GAP list"))
+    GAPWrap.IsEmpty(gapmats) && throw(ArgumentError("gapmats is empty"))
+
+    if GAP.Globals.IsFFECollCollColl(gapmats) ||
+       GAP.Globals.IsCyclotomicCollCollColl(gapmats)
+      # If the entries of the matrices are FFEs or cyclotomics then
+      # we construct the field generated by all entries.
+      gapF = GAP.Globals.FieldOfMatrixList(gapmats)
+    elseif GAP.Globals.IsAlgebraicElementCollCollColl(gapmats) &&
+           GAPWrap.Characteristic(gapmats) > 0
+#T omit this restriction as soon as we have an iso for general alg. ext.
+      # If the entries of the matrices are 'IsAlgebraicElement' then
+      # we take the "parent field".
+      # (This is more Oscar-like, but the reason why we use this field
+      # is that subfields are not supported on the GAP side;
+      # for example, already 'FieldOfMatrixList' would not work.)
+      _wholeField = GAP.evalstr("x -> x!.wholeField")
+#TODO: improve this, see https://github.com/oscar-system/GAP.jl/issues/771
+      gapF = _wholeField(GAP.Globals.FamilyObj(gapmats[1][1,1]))
+    else
+      throw(ArgumentError("gapmats is not a GAP list of matrices over a finite field"))
+    end
+
+    f = iso_gap_oscar(gapF)
+    F = codomain(f)
+
+    result = dense_matrix_type(F)[]
+    for mat in gapmats
+      m = GAPWrap.NrRows(mat)
+      n = GAPWrap.NrCols(mat)
+      entries = [f(mat[i, j]) for i in 1:m, j in 1:n]
+      push!(result, matrix(F, entries))
+    end
+
+    z = gen(F)
+    return result, F, z
 end

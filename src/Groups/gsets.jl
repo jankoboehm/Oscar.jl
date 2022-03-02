@@ -4,13 +4,6 @@
 # but that local replacements by pure Julia code (independent of GAP)
 # are welcome.
 
-if isdefined(Hecke, :isregular)
-    import Hecke: isregular
-end
-if isdefined(Hecke, :isprimitive)
-    import Hecke: isprimitive
-end
-
 export
     all_blocks,
     blocks,
@@ -52,11 +45,10 @@ abstract type GSet{T} end
 ##  - the seeds (something iterable) whose closure under the action is the G-set
 ##  - the dictionary used to store attributes (orbits, elements, ...)
 
-mutable struct GSetByElements{T} <: GSet{T}
+@attributes mutable struct GSetByElements{T} <: GSet{T}
     group::T
     action_function::Function
     seeds
-    AbstractAlgebra.@declare_other
 
     function GSetByElements(G::T, fun::Function, seeds) where T<:GAPGroup
         @assert ! isempty(seeds)
@@ -101,7 +93,7 @@ gset_by_type(G::PermGroup, Omega, ::Type{T}) where T<:Tuple{Vararg{T2}} where T2
 ## natural action of a permutation group on the integers 1, ..., degree
 function gset(G::PermGroup)
     omega = gset(G, 1:G.deg)
-    AbstractAlgebra.set_special(omega, :elements => omega.seeds)
+    set_attribute!(omega, :elements => omega.seeds)
     return omega
 end
 
@@ -123,7 +115,7 @@ end
 
 function as_gset(G::T, fun::Function, Omega) where T<:GAPGroup
     omega = GSetByElements(G, fun, Omega)
-    AbstractAlgebra.set_special(omega, :elements => omega.seeds)
+    set_attribute!(omega, :elements => omega.seeds)
     return omega
 end
 
@@ -182,7 +174,7 @@ function Hecke.orbit(Omega::GSetByElements{<:GAPGroup}, omega)
 
     res = as_gset(Omega.group, Omega.action_function, orb)
     # We know that this G-set is transitive.
-    AbstractAlgebra.set_special(res, :orbits => [orb])
+    set_attribute!(res, :orbits => [orb])
     return res
 end
 
@@ -205,7 +197,7 @@ function orbit_via_Julia(Omega::GSetByElements{<:GAPGroup}, omega)
 
     res = as_gset(Omega.group, Omega.action_function, orbarray)
     # We know that this G-set is transitive.
-    AbstractAlgebra.set_special(res, :orbits => [orbarray])
+    set_attribute!(res, :orbits => [orbarray])
     return res
 end
 
@@ -221,19 +213,16 @@ end
 ##
 ##  `:orbits` a vector of G-sets
 
-function orbits(Omega::GSetByElements{<:GAPGroup})
-    orbs = AbstractAlgebra.get_special(Omega, :orbits)
-    if orbs == nothing
-      G = Omega.group
-      orbs = []
-      for p in Omega.seeds
-        if all(o -> !(p in o), orbs)
-          push!(orbs, Hecke.orbit(Omega, p))
-        end
-      end
-      AbstractAlgebra.set_special(Omega, :orbits => orbs)
+@attr Vector{Any} function orbits(Omega::GSetByElements{<:GAPGroup})
+  G = Omega.group
+  # TODO: tighten the return type
+  orbs = []
+  for p in Omega.seeds
+    if all(o -> !(p in o), orbs)
+      push!(orbs, Hecke.orbit(Omega, p))
     end
-    return orbs
+  end
+  return orbs
 end
 
 
@@ -241,14 +230,10 @@ end
 ##
 ##  `:elements` a vector of points
 
-function elements(Omega::GSetByElements)
-    elms = AbstractAlgebra.get_special(Omega, :elements)
-    if elms == nothing
-      orbs = orbits(Omega)
-      elms = union(map(elements, orbs)...)
-      AbstractAlgebra.set_special(Omega, :elements => elms)
-    end
-    return elms
+@attr Any function elements(Omega::GSetByElements)
+  orbs = orbits(Omega)
+  elms = union(map(elements, orbs)...)
+  return elms
 end
 
 
@@ -264,10 +249,8 @@ function permutation(Omega::GSetByElements{T}, g::BasicGAPGroupElem{T}) where T<
     # whether the given group element 'g' is a group element.
     pi = GAP.Globals.PermutationOp(g, omega_list, gfun)
 
-    sym = AbstractAlgebra.get_special(Omega, :action_range)
-    if sym == nothing
-      sym = symmetric_group(length(Omega))
-      AbstractAlgebra.set_special(Omega, :action_range => sym )
+    sym = get_attribute!(Omega, :action_range) do
+      return symmetric_group(length(Omega))
     end
     return group_element(sym, pi)
 end
@@ -294,44 +277,37 @@ end );
     end
 end
 
-function action_homomorphism(Omega::GSetByElements{T}) where T<:GAPGroup
-    acthom = AbstractAlgebra.get_special(Omega, :action_homomorphism)
-    if acthom == nothing
-      G = Omega.group
-      omega_list = GAP.julia_to_gap(elements(Omega))
-      gap_gens = map(x -> x.X, gens(G))
-      gfun = GAP.julia_to_gap(Omega.action_function)
+@attr GAPGroupHomomorphism{T, PermGroup} function action_homomorphism(Omega::GSetByElements{T}) where T<:GAPGroup
+  G = Omega.group
+  omega_list = GAP.julia_to_gap(elements(Omega))
+  gap_gens = map(x -> x.X, gens(G))
+  gfun = GAP.julia_to_gap(Omega.action_function)
 
-      # The following works only because GAP does not check
-      # whether the given generators in GAP and Julia fit together.
-      acthom = GAP.Globals.ActionHomomorphism(G.X, omega_list, GAP.julia_to_gap(gap_gens), GAP.julia_to_gap(gens(G)), gfun)
+  # The following works only because GAP does not check
+  # whether the given generators in GAP and Julia fit together.
+  acthom = GAP.Globals.ActionHomomorphism(G.X, omega_list, GAP.julia_to_gap(gap_gens), GAP.julia_to_gap(gens(G)), gfun)
 
-      # The first difficulty on the GAP side is `ImagesRepresentative`
-      # (which is the easy direction of the action homomorphism):
-      # In the method in question, GAP does not really know how to compute
-      # the group element that actually acts from the given group element;
-      # there is only a rudimentary `FunctionAction` inside the
-      # `UnderlyingExternalSet` of the GAP homomorphism object `acthom`.
-      # We could replace this function here,
-      # but this would introduce overhead for mapping each point.
-      # Thus we install a special `ImagesRepresentative` method in GAP;
-      # note that we know how to get the Julia "actor" from the GAP group
-      # element, by wrapping it into the corresponding Julia group element.
-      # (Yes, this is also overhead.
-      # The alternative would be to create a new type of Oscar homomorphism,
-      # which uses `permutation` or something better for mapping elements.)
-      __init_JuliaData()
-      GAP.Globals.SetJuliaData(acthom, GAP.julia_to_gap([Omega, G]))
+  # The first difficulty on the GAP side is `ImagesRepresentative`
+  # (which is the easy direction of the action homomorphism):
+  # In the method in question, GAP does not really know how to compute
+  # the group element that actually acts from the given group element;
+  # there is only a rudimentary `FunctionAction` inside the
+  # `UnderlyingExternalSet` of the GAP homomorphism object `acthom`.
+  # We could replace this function here,
+  # but this would introduce overhead for mapping each point.
+  # Thus we install a special `ImagesRepresentative` method in GAP;
+  # note that we know how to get the Julia "actor" from the GAP group
+  # element, by wrapping it into the corresponding Julia group element.
+  # (Yes, this is also overhead.
+  # The alternative would be to create a new type of Oscar homomorphism,
+  # which uses `permutation` or something better for mapping elements.)
+  __init_JuliaData()
+  GAP.Globals.SetJuliaData(acthom, GAP.julia_to_gap([Omega, G]))
 
-      sym = AbstractAlgebra.get_special(Omega, :action_range)
-      if sym == nothing
-        sym = symmetric_group(length(Omega))
-        AbstractAlgebra.set_special(Omega, :action_range => sym )
-      end
-      acthom = GAPGroupHomomorphism{T,PermGroup}(G, sym, acthom)
-      AbstractAlgebra.set_special(Omega, :action_homomorphism => acthom )
-    end
-    return acthom
+  sym = get_attribute!(Omega, :action_range) do
+    return symmetric_group(length(Omega))
+  end
+  return GAPGroupHomomorphism(G, sym, acthom)
 end
 
 
@@ -484,7 +460,7 @@ transitivity(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.T
 
 Return whether the action of `G` on `L` is transitive.
 """
-istransitive(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.IsTransitive(G.X, GAP.GapObj(L))
+istransitive(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAPWrap.IsTransitive(G.X, GAP.GapObj(L))
 # Note that this definition does not coincide with that of the
 # property `GAP.Globals.IsTransitive`, for which the default domain
 # of the action is the set of moved points.
@@ -496,7 +472,7 @@ istransitive(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.I
 Return whether the action of `G` on `L` is primitive, that is,
 the action is transitive and the point stabilizers are maximal in `G`.
 """
-isprimitive(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.IsPrimitive(G.X, GAP.GapObj(L))
+isprimitive(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAPWrap.IsPrimitive(G.X, GAP.GapObj(L))
 
 
 """
@@ -505,7 +481,7 @@ isprimitive(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.Is
 Return whether the action of `G` on `L` is regular
 (i.e., transitive and semiregular).
 """
-isregular(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.IsRegular(G.X, GAP.GapObj(L))
+isregular(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAPWrap.IsRegular(G.X, GAP.GapObj(L))
 
 
 """
@@ -514,4 +490,4 @@ isregular(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.IsRe
 Return whether the action of `G` on `L` is semiregular
 (i.e., the stabilizer of each point is the identity).
 """
-issemiregular(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAP.Globals.IsSemiRegular(G.X, GAP.GapObj(L))
+issemiregular(G::PermGroup, L::AbstractVector{Int} = 1:degree(G)) = GAPWrap.IsSemiRegular(G.X, GAP.GapObj(L))

@@ -23,8 +23,7 @@ julia> R, (x, y, z) = PolynomialRing(QQ, ["x", "y", "z"])
 
 julia> A, _ = quo(R, ideal(R, [y-x^2, z-x^3]))
 (Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z), Map from
-Multivariate Polynomial Ring in x, y, z over Rational Field to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z) defined by a julia-function with inverse
-)
+Multivariate Polynomial Ring in x, y, z over Rational Field to Quotient of Multivariate Polynomial Ring in x, y, z over Rational Field by ideal(-x^2 + y, -x^3 + z) defined by a julia-function with inverse)
 
 julia> dim(A)
 1
@@ -178,8 +177,7 @@ julia> R, (x,) = PolynomialRing(QQ, ["x"])
 
 julia> A, _ = quo(R, ideal(R, [x^4]))
 (Quotient of Multivariate Polynomial Ring in x over Rational Field by ideal(x^4), Map from
-Multivariate Polynomial Ring in x over Rational Field to Quotient of Multivariate Polynomial Ring in x over Rational Field by ideal(x^4) defined by a julia-function with inverse
-)
+Multivariate Polynomial Ring in x over Rational Field to Quotient of Multivariate Polynomial Ring in x over Rational Field by ideal(x^4) defined by a julia-function with inverse)
 
 julia> isreduced(A)
 false
@@ -229,7 +227,7 @@ function _containement_helper(R::MPolyRing, N::Int, M::Int, I::MPolyIdeal, W::Ve
    else ## ord == :degrevlex
       O = degrevlex(GG[1:M])*degrevlex(GG[M+1:M+N])
    end
-   groebner_assure(J, O, complete_reduction = true)
+   groebner_assure(J, O, true)
    return (T, phi, J)
 end
 
@@ -259,7 +257,7 @@ Otherwise, return `(false, 0)`.
 
 # Examples
 ```jldoctest
-julia> R, x = PolynomialRing(QQ, :x => 1:3)
+julia> R, x = PolynomialRing(QQ, "x" => 1:3)
 (Multivariate Polynomial Ring in x[1], x[2], x[3] over Rational Field, fmpq_mpoly[x[1], x[2], x[3]])
 
 julia> f = x[1]^6*x[2]^6-x[1]^6*x[3]^6;
@@ -390,7 +388,7 @@ Return `true` if `F` is finite, `false` otherwise.
 """
 function isfinite(F::AlgHom)
   (T, _, _, J, _) = groebner_data(F, :lex)
-  G = collect(J.gb)
+  G = collect(first(values(J.gb)))
   # Find all elements with leading monomial which contains the 
   # variables x_i.
   s = codomain(F)
@@ -572,7 +570,7 @@ function noether_normalization(A::MPolyQuo)
  i2 = [R(x) for x = gens(l[2])]
  m = matrix([[coeff(x, y) for y = gens(R)] for x = i1])
  mi = inv(m)
- mi_arr = [collect(matrix([gens(R)])'*map_entries(R, mi))[i] for i in 1:ngens(R)]
+ mi_arr = [collect(matrix([gens(R)])*map_entries(R, mi))[i] for i in 1:ngens(R)]
  h1 = AlgebraHomomorphism(A, A, map(A, i1))
  h2 = AlgebraHomomorphism(A, A, map(A, mi_arr))
  return map(x->h2(A(x)), i2), h1, h2
