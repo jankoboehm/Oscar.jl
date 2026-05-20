@@ -1,5 +1,6 @@
 include("Schemes/main.jl")
 include("ToricVarieties/JToric.jl")
+include("DivisorTools/main.jl")
 include("Curves/AffinePlaneCurve.jl")
 include("Curves/ProjectivePlaneCurve.jl")
 include("Curves/ProjectiveCurve.jl")
