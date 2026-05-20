@@ -24,6 +24,7 @@ struct EmbeddedGradedModuleSections{T}
   denominator::T
   sheaf_degree::Any
   numerator_degree::Any
+  trivialization_shift::Any
   vector_space::Any
   embedding::Any
   numerators::Vector{T}
@@ -32,4 +33,14 @@ end
 struct EmbeddedFormalDivisor{T}
   ambient::EmbeddedDivisorAmbient{T}
   summands::Vector{Tuple{Int, EmbeddedDivisor{T}}}
+end
+
+struct EmbeddedModuleTrivialization{T}
+  ambient::EmbeddedDivisorAmbient{T}
+  module_object::Any
+  numerator::MPolyIdeal{T}
+  denominator::T
+  images::Vector{T}
+  shift::Any
+  method::Symbol
 end
