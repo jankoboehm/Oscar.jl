@@ -18,6 +18,11 @@ section_degree(S::EmbeddedGradedModuleSections) = S.sheaf_degree
 section_numerator_degree(S::EmbeddedGradedModuleSections) = S.numerator_degree
 section_vector_space(S::EmbeddedGradedModuleSections) = S.vector_space
 section_embedding(S::EmbeddedGradedModuleSections) = S.embedding
+section_trivialization_shift(S::EmbeddedGradedModuleSections) = S.trivialization_shift
+trivialization_numerator(T::EmbeddedModuleTrivialization) = T.numerator
+trivialization_denominator(T::EmbeddedModuleTrivialization) = T.denominator
+trivialization_images(T::EmbeddedModuleTrivialization) = T.images
+trivialization_shift(T::EmbeddedModuleTrivialization) = T.shift
 
 function Base.show(io::IO, A::EmbeddedDivisorAmbient)
   kind = A.projective ? "projective" : "affine"
@@ -36,11 +41,19 @@ end
 function Base.show(io::IO, S::EmbeddedGradedModuleSections)
   print(io, "EmbeddedGradedModuleSections(degree = ", S.sheaf_degree,
         ", numerator degree = ", S.numerator_degree,
+        ", shift = ", S.trivialization_shift,
         ", number of basis sections = ", length(S.numerators), ")")
 end
 
 function Base.show(io::IO, F::EmbeddedFormalDivisor)
   print(io, "EmbeddedFormalDivisor(", length(F.summands), " summands)")
+end
+
+function Base.show(io::IO, T::EmbeddedModuleTrivialization)
+  print(io, "EmbeddedModuleTrivialization(method = ", T.method,
+        ", numerator = ", T.numerator,
+        ", denominator = ", T.denominator,
+        ", shift = ", T.shift, ")")
 end
 
 _base_ring_check(R, I::MPolyIdeal) = base_ring(I) === R || error("ideal is not in the ambient polynomial ring")
@@ -444,35 +457,6 @@ function _check_module_base_ring(A::EmbeddedDivisorAmbient, M)
   end
 end
 
-function _rank_one_coordinate(A::EmbeddedDivisorAmbient, f)
-  c = coordinates(f)
-  return _as_ambient_poly(A, c[1])
-end
-
-function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, M::SubquoModule)
-  _check_module_base_ring(A, M)
-  F = ambient_free_module(M)
-  rank(F) == 1 ||
-    error("automatic module-to-divisor conversion needs a module embedded in a rank-one free module, pass explicit images/trivialization otherwise")
-  any(!is_zero(r) for r in relations(M)) &&
-    error("automatic module-to-divisor conversion only handles submodules of a rank-one free module, pass explicit images/trivialization for presented modules with relations")
-
-  V = elem_type(A.R)[]
-  for f in ambient_representatives_generators(M)
-    h = _rank_one_coordinate(A, f)
-    is_zero(h) || push!(V, h)
-  end
-  return isempty(V) ? _zero_ideal(A.R) : ideal(A.R, V)
-end
-
-function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, I::MPolyIdeal)
-  return _as_ambient_ideal(A, I)
-end
-
-function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, I::MPolyQuoIdeal)
-  return _as_ambient_ideal(A, I)
-end
-
 function _number_of_module_generators(M)
   try
     return ngens(M)
@@ -481,54 +465,304 @@ function _number_of_module_generators(M)
   end
 end
 
-function _rank_one_raw_ideal_from_images(A::EmbeddedDivisorAmbient, images)
-  V = elem_type(A.R)[]
-  for h in images
-    hh = _as_ambient_poly(A, h)
-    is_zero(hh) || push!(V, hh)
+function _module_generator_degrees(M)
+  try
+    return Any[degrees_of_generators(M)[i] for i in 1:_number_of_module_generators(M)]
+  catch
+    return Any[nothing for i in 1:_number_of_module_generators(M)]
   end
+end
+
+function _ambient_coordinate(A::EmbeddedDivisorAmbient, f, i::Int)
+  c = coordinates(f)
+  try
+    return _as_ambient_poly(A, c[i])
+  catch
+    return zero(A.R)
+  end
+end
+
+function _coordinate_row(A::EmbeddedDivisorAmbient, f, n::Int)
+  return elem_type(A.R)[_ambient_coordinate(A, f, i) for i in 1:n]
+end
+
+function _is_zero_on_X(A::EmbeddedDivisorAmbient, f)
+  ff = _as_ambient_poly(A, f)
+  is_zero(ff) && return true
+  return is_subset(ideal(A.R, [ff]), A.X)
+end
+
+function _nonzero_images_on_X(A::EmbeddedDivisorAmbient, images)
+  return elem_type(A.R)[h for h in images if !_is_zero_on_X(A, h)]
+end
+
+function _dot_row(A::EmbeddedDivisorAmbient, a::Vector, b::Vector)
+  length(a) == length(b) || error("coordinate rows have different lengths")
+  s = zero(A.R)
+  for i in 1:length(a)
+    s += _as_ambient_poly(A, a[i]) * _as_ambient_poly(A, b[i])
+  end
+  return s
+end
+
+function _identity_rows(A::EmbeddedDivisorAmbient, n::Int)
+  return [elem_type(A.R)[i == j ? one(A.R) : zero(A.R) for i in 1:n] for j in 1:n]
+end
+
+function _module_rows(A::EmbeddedDivisorAmbient, M::FreeMod)
+  _check_module_base_ring(A, M)
+  r = rank(M)
+  return _identity_rows(A, r), Vector{Vector{elem_type(A.R)}}(), elem_type(A.R)[], r
+end
+
+function _module_rows(A::EmbeddedDivisorAmbient, M::SubquoModule)
+  _check_module_base_ring(A, M)
+  F = ambient_free_module(M)
+  r = rank(F)
+  gen_rows = [_coordinate_row(A, f, r) for f in ambient_representatives_generators(M)]
+  rel_rows = [_coordinate_row(A, f, r) for f in relations(M)]
+  return gen_rows, rel_rows, elem_type(A.R)[], r
+end
+
+function _combination_indices(n::Int, k::Int)
+  k < 0 && return Vector{Int}[]
+  k == 0 && return [Int[]]
+  k > n && return Vector{Int}[]
+  out = Vector{Int}[]
+  cur = Int[]
+  function rec(start::Int, left::Int)
+    if left == 0
+      push!(out, copy(cur))
+      return nothing
+    end
+    stop = n - left + 1
+    for i in start:stop
+      push!(cur, i)
+      rec(i + 1, left - 1)
+      pop!(cur)
+    end
+    return nothing
+  end
+  rec(1, k)
+  return out
+end
+
+function _minor_det(R, rows::Vector, rr::Vector{Int}, cc::Vector{Int})
+  k = length(rr)
+  k == 0 && return one(R)
+  k == 1 && return rows[rr[1]][cc[1]]
+  entries = elem_type(R)[]
+  for i in rr
+    for j in cc
+      push!(entries, rows[i][j])
+    end
+  end
+  return det(matrix(R, k, k, entries))
+end
+
+function _generic_row_rank_mod_X(A::EmbeddedDivisorAmbient, rows::Vector, ncols::Int;
+                                 max_minors::Int=20000)
+  isempty(rows) && return 0
+  maxk = min(length(rows), ncols)
+  checked = 0
+  for k in maxk:-1:1
+    row_combs = _combination_indices(length(rows), k)
+    col_combs = _combination_indices(ncols, k)
+    for rr in row_combs
+      for cc in col_combs
+        checked += 1
+        checked > max_minors && return nothing
+        h = _minor_det(A.R, rows, rr, cc)
+        !_is_zero_on_X(A, h) && return k
+      end
+    end
+  end
+  return 0
+end
+
+function _verify_generic_rank_one(A::EmbeddedDivisorAmbient, gen_rows, rel_rows, ncols;
+                                  max_minors::Int=20000, strict::Bool=false)
+  rrel = _generic_row_rank_mod_X(A, rel_rows, ncols; max_minors=max_minors)
+  rall = _generic_row_rank_mod_X(A, vcat(rel_rows, gen_rows), ncols; max_minors=max_minors)
+  if rrel === nothing || rall === nothing
+    strict && error("generic rank-one check exceeded max_minors=$max_minors, pass strict_rank_check=false or increase max_minors")
+    return nothing
+  end
+  rall - rrel == 1 ||
+    error("module is not generically rank one on the chosen embedded ambient, generic rank appears to be $(rall-rrel)")
+  return nothing
+end
+
+function _kernel_vectors_annihilating_relations(A::EmbeddedDivisorAmbient,
+                                                rel_rows::Vector, ncols::Int)
+  isempty(rel_rows) && return _identity_rows(A, ncols)
+
+  QX, _ = quo(A.R, A.X)
+  E = free_module(QX, ncols)
+  G = free_module(QX, length(rel_rows))
+
+  imgs = typeof(zero(G))[]
+  for i in 1:ncols
+    v = zero(G)
+    for j in 1:length(rel_rows)
+      c = QX(rel_rows[j][i])
+      is_zero(c) || (v += c * G[j])
+    end
+    push!(imgs, v)
+  end
+
+  phi = hom(E, G, imgs)
+  K, inc = kernel(phi)
+  out = Vector{Vector{elem_type(A.R)}}()
+  for k in gens(K)
+    w = inc(k)
+    push!(out, elem_type(A.R)[_ambient_coordinate(A, w, i) for i in 1:ncols])
+  end
+  return out
+end
+
+function _images_from_lambda(A::EmbeddedDivisorAmbient, gen_rows, lambda)
+  return elem_type(A.R)[_dot_row(A, row, lambda) for row in gen_rows]
+end
+
+function _select_trivializing_images(A::EmbeddedDivisorAmbient, gen_rows, rel_rows,
+                                     ncols::Int)
+  lambdas = _kernel_vectors_annihilating_relations(A, rel_rows, ncols)
+  isempty(lambdas) && error("could not find a rational functional annihilating the module relations")
+
+  for lambda in lambdas
+    imgs = _images_from_lambda(A, gen_rows, lambda)
+    !isempty(_nonzero_images_on_X(A, imgs)) && return imgs
+  end
+
+  if length(lambdas) > 1
+    lambda = elem_type(A.R)[zero(A.R) for _ in 1:ncols]
+    for (j, l) in enumerate(lambdas)
+      for i in 1:ncols
+        lambda[i] += A.R(j) * l[i]
+      end
+    end
+    imgs = _images_from_lambda(A, gen_rows, lambda)
+    !isempty(_nonzero_images_on_X(A, imgs)) && return imgs
+  end
+
+  error("all candidate generic trivializations vanish on the module, check the ambient coordinate ideal or pass explicit images")
+end
+
+function _rank_one_raw_ideal_from_images(A::EmbeddedDivisorAmbient, images)
+  V = _nonzero_images_on_X(A, images)
   return isempty(V) ? _zero_ideal(A.R) : ideal(A.R, V)
 end
 
-function rank_one_module_ideal(A::EmbeddedDivisorAmbient, M;
-                               cleanup::Symbol=:primary,
-                               algorithm::Symbol=:GTZ, cache::Bool=true)
-  N = _rank_one_raw_ideal(A, M)
-  if cleanup == :none
-    return _saturate_if_projective(A, N + A.X)
-  elseif cleanup == :primary
-    return _clean_rank_one_ideal(A, N; algorithm=algorithm, cache=cache)
-  else
-    error("unknown cleanup mode $cleanup, use :primary or :none")
+function _degree_try(A::EmbeddedDivisorAmbient, f, like)
+  ff = _as_ambient_poly(A, f)
+  is_zero(ff) && return nothing
+  try
+    return _degree_like(A, ff, like)
+  catch
+    return nothing
   end
 end
 
-function rank_one_module_ideal(A::EmbeddedDivisorAmbient, M, images;
-                               cleanup::Symbol=:primary,
-                               algorithm::Symbol=:GTZ, cache::Bool=true)
-  # Explicit trivialization: the i-th generator of M is sent to images[i]/f
-  # for a common denominator f supplied to the higher-level routines.
-  # We intentionally do not attempt to certify the map here, because that is a
-  # separate homomorphism/well-definedness problem for arbitrary presentations.
-  length(images) == _number_of_module_generators(M) ||
-    error("number of images must match the number of module generators")
-  N = _rank_one_raw_ideal_from_images(A, images)
-  if cleanup == :none
-    return _saturate_if_projective(A, N + A.X)
-  elseif cleanup == :primary
-    return _clean_rank_one_ideal(A, N; algorithm=algorithm, cache=cache)
-  else
-    error("unknown cleanup mode $cleanup, use :primary or :none")
+function _grading_group_or_nothing(A::EmbeddedDivisorAmbient)
+  try
+    return grading_group(A.R)
+  catch
+    return nothing
   end
+end
+
+function _default_degree(A::EmbeddedDivisorAmbient)
+  G = _grading_group_or_nothing(A)
+  G === nothing && return 0
+  return zero(G)
+end
+
+function _degree_has_parent(d)
+  try
+    parent(d)
+    return true
+  catch
+    return false
+  end
+end
+
+_is_integer_degree_shape(d) = d isa Integer || d isa AbstractVector{<:Integer}
+
+function _degree_is_zero(d)
+  d === nothing && return true
+  d isa Integer && return iszero(d)
+  d isa AbstractVector && return all(iszero, d)
+  try
+    return is_zero(d)
+  catch
+  end
+  if _degree_has_parent(d)
+    try
+      return d == zero(parent(d))
+    catch
+    end
+  end
+  return false
+end
+
+function _check_degree_compatible(a, b; name::String="degree", reference_name::String="reference degree")
+  (a === nothing || b === nothing) && return nothing
+  if a isa Integer && b isa Integer
+    return nothing
+  elseif a isa AbstractVector{<:Integer} && b isa AbstractVector{<:Integer}
+    length(a) == length(b) || error("$name and $reference_name have different vector lengths")
+    return nothing
+  elseif _degree_has_parent(a) && _degree_has_parent(b)
+    pa = parent(a)
+    pb = parent(b)
+    (pa === pb || pa == pb) || error("$name lies in grading group $pa, but $reference_name lies in $pb")
+    return nothing
+  end
+  error("$name must have the same degree type as $reference_name, got $(typeof(a)) and $(typeof(b))")
+end
+
+function _strict_degree_arg(A::EmbeddedDivisorAmbient, d, like;
+                            name::String="degree", reference_name::String="shift")
+  d === nothing && return _zero_degree_like(A, like)
+  like === nothing && return d
+
+  if _degree_has_parent(like)
+    _is_integer_degree_shape(d) &&
+      error("$name must be an element of the grading group, not an integer/vector surrogate, use zero(grading_group(R)) or a multiple of a generator of grading_group(R)")
+    _check_degree_compatible(d, like; name=name, reference_name=reference_name)
+    return d
+  elseif like isa Integer
+    d isa Integer || error("$name must be an integer to match $reference_name")
+    return d
+  elseif like isa AbstractVector{<:Integer}
+    d isa AbstractVector{<:Integer} || error("$name must be an integer vector to match $reference_name")
+    length(d) == length(like) || error("$name and $reference_name have different vector lengths")
+    return collect(d)
+  end
+
+  _check_degree_compatible(d, like; name=name, reference_name=reference_name)
+  return d
+end
+
+function _normalize_explicit_shift(A::EmbeddedDivisorAmbient, shift)
+  shift === nothing && return nothing
+  if _grading_group_or_nothing(A) !== nothing && _is_integer_degree_shape(shift)
+    error("shift must be an element of grading_group(R), not an integer/vector surrogate, pass zero(grading_group(R)) for the untwisted case")
+  end
+  return shift
 end
 
 function _zero_degree_like(A::EmbeddedDivisorAmbient, like)
+  like === nothing && return _default_degree(A)
   if like isa Integer
     return 0
   elseif like isa AbstractVector{<:Integer}
     return zeros(Int, length(like))
+  elseif _degree_has_parent(like)
+    return zero(parent(like))
   else
-    return zero(grading_group(A.R))
+    return _default_degree(A)
   end
 end
 
@@ -540,7 +774,23 @@ function _degree_like(A::EmbeddedDivisorAmbient, f, like)
   elseif like isa AbstractVector{<:Integer}
     return degree(Vector{Int}, f)
   else
-    return degree(f)
+    d = degree(f)
+    if like === nothing
+      return d
+    end
+    try
+      _check_degree_compatible(d, like; name="polynomial degree", reference_name="reference degree")
+      return d
+    catch ambient_err
+      try
+        QX, _ = quo(A.R, A.X)
+        dX = degree(QX(f))
+        _check_degree_compatible(dX, like; name="quotient polynomial degree", reference_name="reference degree")
+        return dX
+      catch
+        throw(ambient_err)
+      end
+    end
   end
 end
 
@@ -560,53 +810,183 @@ function _degree_sub(a, b)
   return a - b
 end
 
-function _degree_to_like(d, like)
-  if like isa Integer
-    try
-      return Int(d)
-    catch
-      try
-        return Int(d[1])
-      catch
-        error("could not convert module generator degree $d to an integer, pass numerator_degree explicitly")
-      end
-    end
-  elseif like isa AbstractVector{<:Integer}
-    try
-      return Vector{Int}(d)
-    catch
-      try
-        return [Int(d[i]) for i in 1:length(like)]
-      catch
-        error("could not convert module generator degree $d to an integer vector, pass numerator_degree explicitly")
-      end
-    end
+function _compute_trivialization_shift(A::EmbeddedDivisorAmbient, M, images, denominator,
+                                       explicit_shift)
+  explicit_shift !== nothing && return _normalize_explicit_shift(A, explicit_shift)
+
+  degs = _module_generator_degrees(M)
+  isempty(degs) && return _default_degree(A)
+  f = _as_ambient_poly(A, denominator)
+  shifts = Any[]
+  for i in 1:min(length(degs), length(images))
+    _is_zero_on_X(A, images[i]) && continue
+    degs[i] === nothing && continue
+    fdeg = _degree_try(A, f, degs[i])
+    hdeg = _degree_try(A, images[i], degs[i])
+    fdeg === nothing && continue
+    hdeg === nothing && continue
+    push!(shifts, _degree_add(_degree_sub(degs[i], hdeg), fdeg))
+  end
+
+  isempty(shifts) && return nothing
+  s = shifts[1]
+  for t in shifts[2:end]
+    t == s || error("the computed rank-one trivialization is not homogeneous, pass explicit images/denominator/shift")
+  end
+  return s
+end
+
+function _clean_module_numerator(A::EmbeddedDivisorAmbient, N::MPolyIdeal;
+                                 cleanup::Symbol=:primary,
+                                 algorithm::Symbol=:GTZ, cache::Bool=true)
+  if cleanup == :none
+    return _saturate_if_projective(A, N + A.X)
+  elseif cleanup == :primary
+    return _clean_rank_one_ideal(A, N; algorithm=algorithm, cache=cache)
   else
-    return d
+    error("unknown cleanup mode $cleanup, use :primary or :none")
   end
 end
 
-function _rank_one_module_shift(A::EmbeddedDivisorAmbient, M, like)
-  try
-    F = ambient_free_module(M)
-    rank(F) == 1 || return _zero_degree_like(A, like)
-    return _degree_to_like(degrees_of_generators(F)[1], like)
-  catch err
-    msg = sprint(showerror, err)
-    if occursin("ambient_free_module", msg) || occursin("degrees_of_generators", msg)
-      return _zero_degree_like(A, like)
-    end
-    error("could not determine the degree shift of the rank-one ambient free module, pass numerator_degree explicitly")
+function rank_one_module_trivialization(A::EmbeddedDivisorAmbient, I::MPolyIdeal;
+                                        denominator=one(A.R), shift=nothing,
+                                        cleanup::Symbol=:primary,
+                                        algorithm::Symbol=:GTZ, cache::Bool=true,
+                                        kwargs...)
+  Iamb = _as_ambient_ideal(A, I)
+  f = _as_ambient_poly(A, denominator)
+  is_zero(f) && error("zero cannot be used as common denominator")
+  N = _clean_module_numerator(A, Iamb; cleanup=cleanup, algorithm=algorithm, cache=cache)
+  imgs = elem_type(A.R)[_as_ambient_poly(A, g) for g in gens(Iamb)]
+  isempty(imgs) && push!(imgs, zero(A.R))
+  sh = shift === nothing ? _default_degree(A) : _normalize_explicit_shift(A, shift)
+  return EmbeddedModuleTrivialization{elem_type(A.R)}(A, I, N, f, imgs, sh, :ideal)
+end
+
+function rank_one_module_trivialization(A::EmbeddedDivisorAmbient, I::MPolyQuoIdeal;
+                                        kwargs...)
+  return rank_one_module_trivialization(A, _as_ambient_ideal(A, I); kwargs...)
+end
+
+function rank_one_module_trivialization(A::EmbeddedDivisorAmbient, F::FreeMod;
+                                        denominator=one(A.R), shift=nothing,
+                                        cleanup::Symbol=:primary,
+                                        algorithm::Symbol=:GTZ, cache::Bool=true,
+                                        verify_rank_one::Bool=true,
+                                        kwargs...)
+  _check_module_base_ring(A, F)
+  rank(F) == 1 || error("free module has rank $(rank(F)), only generically rank-one modules can be turned into divisors")
+  f = _as_ambient_poly(A, denominator)
+  is_zero(f) && error("zero cannot be used as common denominator")
+  imgs = elem_type(A.R)[one(A.R)]
+  N = _clean_module_numerator(A, ideal(A.R, imgs); cleanup=cleanup, algorithm=algorithm, cache=cache)
+  sh = _compute_trivialization_shift(A, F, imgs, f, shift)
+  return EmbeddedModuleTrivialization{elem_type(A.R)}(A, F, N, f, imgs, sh, :free_rank_one)
+end
+
+function rank_one_module_trivialization(A::EmbeddedDivisorAmbient, M::SubquoModule;
+                                        denominator=one(A.R), shift=nothing,
+                                        cleanup::Symbol=:primary,
+                                        algorithm::Symbol=:GTZ, cache::Bool=true,
+                                        verify_rank_one::Bool=true,
+                                        max_minors::Int=20000,
+                                        strict_rank_check::Bool=false,
+                                        kwargs...)
+  _check_module_base_ring(A, M)
+  gen_rows, rel_rows, _, ncols = _module_rows(A, M)
+  isempty(gen_rows) && error("zero module cannot be trivialized as a rank-one module")
+
+  verify_rank_one && _verify_generic_rank_one(A, gen_rows, rel_rows, ncols;
+                                              max_minors=max_minors,
+                                              strict=strict_rank_check)
+
+  imgs = if ncols == 1 && all(_is_zero_on_X(A, r[1]) for r in rel_rows)
+    elem_type(A.R)[row[1] for row in gen_rows]
+  else
+    _select_trivializing_images(A, gen_rows, rel_rows, ncols)
   end
+
+  f = _as_ambient_poly(A, denominator)
+  is_zero(f) && error("zero cannot be used as common denominator")
+  raw = _rank_one_raw_ideal_from_images(A, imgs)
+  N = _clean_module_numerator(A, raw; cleanup=cleanup, algorithm=algorithm, cache=cache)
+  sh = _compute_trivialization_shift(A, M, imgs, f, shift)
+  return EmbeddedModuleTrivialization{elem_type(A.R)}(A, M, N, f, imgs, sh, :generic_rank_one)
+end
+
+function rank_one_module_trivialization(A::EmbeddedDivisorAmbient, M, images;
+                                        denominator=one(A.R), shift=nothing,
+                                        cleanup::Symbol=:primary,
+                                        algorithm::Symbol=:GTZ, cache::Bool=true,
+                                        kwargs...)
+  length(images) == _number_of_module_generators(M) ||
+    error("number of images must match the number of module generators")
+  f = _as_ambient_poly(A, denominator)
+  is_zero(f) && error("zero cannot be used as common denominator")
+  imgs = elem_type(A.R)[_as_ambient_poly(A, h) for h in images]
+  raw = _rank_one_raw_ideal_from_images(A, imgs)
+  N = _clean_module_numerator(A, raw; cleanup=cleanup, algorithm=algorithm, cache=cache)
+  sh = _compute_trivialization_shift(A, M, imgs, f, shift)
+  return EmbeddedModuleTrivialization{elem_type(A.R)}(A, M, N, f, imgs, sh, :explicit)
+end
+
+module_trivialization(args...; kwargs...) = rank_one_module_trivialization(args...; kwargs...)
+
+default_trivialization(args...; kwargs...) = rank_one_module_trivialization(args...; kwargs...)
+
+function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, M::SubquoModule)
+  return rank_one_module_trivialization(A, M).numerator
+end
+
+function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, F::FreeMod)
+  return rank_one_module_trivialization(A, F).numerator
+end
+
+function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, I::MPolyIdeal)
+  return _as_ambient_ideal(A, I)
+end
+
+function _rank_one_raw_ideal(A::EmbeddedDivisorAmbient, I::MPolyQuoIdeal)
+  return _as_ambient_ideal(A, I)
+end
+
+function rank_one_module_ideal(A::EmbeddedDivisorAmbient, M;
+                               cleanup::Symbol=:primary,
+                               algorithm::Symbol=:GTZ, cache::Bool=true,
+                               kwargs...)
+  T = rank_one_module_trivialization(A, M; cleanup=cleanup, algorithm=algorithm,
+                                     cache=cache, kwargs...)
+  return T.numerator
+end
+
+function rank_one_module_ideal(A::EmbeddedDivisorAmbient, M, images;
+                               cleanup::Symbol=:primary,
+                               algorithm::Symbol=:GTZ, cache::Bool=true,
+                               kwargs...)
+  T = rank_one_module_trivialization(A, M, images; cleanup=cleanup,
+                                     algorithm=algorithm, cache=cache, kwargs...)
+  return T.numerator
 end
 
 function _target_numerator_degree(A::EmbeddedDivisorAmbient, denominator,
-                                  sheaf_degree, numerator_degree, M)
-  numerator_degree !== nothing && return numerator_degree
+                                  sheaf_degree, numerator_degree, shift)
+  if shift === nothing
+    numerator_degree !== nothing ||
+      error("could not determine the graded trivialization shift, pass shift=... or numerator_degree=...")
+    nd = _strict_degree_arg(A, numerator_degree, nothing; name="numerator_degree")
+    q = _strict_degree_arg(A, sheaf_degree, nd; name="degree", reference_name="numerator_degree")
+    return q, nd
+  end
+
+  q = _strict_degree_arg(A, sheaf_degree, shift; name="degree", reference_name="shift")
+  if numerator_degree !== nothing
+    nd = _strict_degree_arg(A, numerator_degree, shift; name="numerator_degree", reference_name="shift")
+    return q, nd
+  end
+
   f = _as_ambient_poly(A, denominator)
-  fdeg = _degree_like(A, f, sheaf_degree)
-  shift = M === nothing ? _zero_degree_like(A, sheaf_degree) : _rank_one_module_shift(A, M, sheaf_degree)
-  return _degree_sub(_degree_add(sheaf_degree, fdeg), shift)
+  fdeg = _degree_like(A, f, shift)
+  return q, _degree_sub(_degree_add(q, fdeg), shift)
 end
 
 function _homogeneous_coordinate_basis(A::EmbeddedDivisorAmbient, deg)
@@ -664,59 +1044,152 @@ function _graded_piece_basis_of_ideal(A::EmbeddedDivisorAmbient, I::MPolyIdeal, 
 end
 
 function graded_module_global_sections(A::EmbeddedDivisorAmbient, M;
-                                       degree=0, numerator_degree=nothing,
-                                       denominator=one(A.R),
+                                       degree=nothing, numerator_degree=nothing,
+                                       denominator=one(A.R), shift=nothing,
                                        cleanup::Symbol=:primary,
                                        algorithm::Symbol=:GTZ,
-                                       cache::Bool=true)
-  # Interpret M as a rank-one graded module embedded in a rank-one free module,
-  # or as a homogeneous ideal.  If M is represented as N/f, then a section of
-  # sheaf-degree q is represented by a numerator h with
-  #   deg(h) = q + deg(f) - deg(e),
-  # where deg(e) is the rank-one ambient free generator shift.
-  N = rank_one_module_ideal(A, M; cleanup=cleanup, algorithm=algorithm, cache=cache)
-  f = _as_ambient_poly(A, denominator)
-  is_zero(f) && error("zero cannot be used as common denominator")
-  target_degree = _target_numerator_degree(A, f, degree, numerator_degree, M)
-  V, emb, nums = _graded_piece_basis_of_ideal(A, N, target_degree)
-  return EmbeddedGradedModuleSections{elem_type(A.R)}(A, M, N, f, degree,
-                                                      target_degree, V, emb, nums)
+                                       cache::Bool=true,
+                                       kwargs...)
+  T = rank_one_module_trivialization(A, M; denominator=denominator, shift=shift,
+                                     cleanup=cleanup, algorithm=algorithm,
+                                     cache=cache, kwargs...)
+  actual_degree, target_degree = _target_numerator_degree(A, T.denominator, degree,
+                                                           numerator_degree, T.shift)
+  V, emb, nums = _graded_piece_basis_of_ideal(A, T.numerator, target_degree)
+  return EmbeddedGradedModuleSections{elem_type(A.R)}(A, M, T.numerator,
+                                                      T.denominator, actual_degree,
+                                                      target_degree, T.shift,
+                                                      V, emb, nums)
 end
 
 function graded_module_global_sections(A::EmbeddedDivisorAmbient, M, images;
-                                       degree=0, numerator_degree=nothing,
-                                       denominator=one(A.R),
+                                       degree=nothing, numerator_degree=nothing,
+                                       denominator=one(A.R), shift=nothing,
                                        cleanup::Symbol=:primary,
                                        algorithm::Symbol=:GTZ,
-                                       cache::Bool=true)
-  N = rank_one_module_ideal(A, M, images; cleanup=cleanup, algorithm=algorithm, cache=cache)
-  f = _as_ambient_poly(A, denominator)
-  is_zero(f) && error("zero cannot be used as common denominator")
-  target_degree = _target_numerator_degree(A, f, degree, numerator_degree, nothing)
-  V, emb, nums = _graded_piece_basis_of_ideal(A, N, target_degree)
-  return EmbeddedGradedModuleSections{elem_type(A.R)}(A, M, N, f, degree,
-                                                      target_degree, V, emb, nums)
+                                       cache::Bool=true,
+                                       kwargs...)
+  T = rank_one_module_trivialization(A, M, images; denominator=denominator,
+                                     shift=shift, cleanup=cleanup,
+                                     algorithm=algorithm, cache=cache,
+                                     kwargs...)
+  actual_degree, target_degree = _target_numerator_degree(A, T.denominator, degree,
+                                                           numerator_degree, T.shift)
+  V, emb, nums = _graded_piece_basis_of_ideal(A, T.numerator, target_degree)
+  return EmbeddedGradedModuleSections{elem_type(A.R)}(A, M, T.numerator,
+                                                      T.denominator, actual_degree,
+                                                      target_degree, T.shift,
+                                                      V, emb, nums)
 end
 
 global_sections_from_graded_module(args...; kwargs...) = graded_module_global_sections(args...; kwargs...)
 
+function _default_hyperplane_element(A::EmbeddedDivisorAmbient)
+  A.projective || error("twist divisors are only available for projective ambients")
+  for x in gens(A.R)
+    try
+      _degree_is_zero(degree(x)) && continue
+    catch
+      continue
+    end
+    !_is_zero_on_X(A, x) && return x
+  end
+  error("could not find a nonzero homogeneous coordinate for the twist divisor, pass hyperplane=... or twist_divisor=...")
+end
+
+function _zero_degree_of(like)
+  if like isa Integer
+    return 0
+  elseif like isa AbstractVector{<:Integer}
+    return zeros(Int, length(like))
+  elseif _degree_has_parent(like)
+    return zero(parent(like))
+  end
+  error("cannot construct zero degree for $(typeof(like))")
+end
+
+function _degree_multiple_of_unit(shift, unit; max_twist_multiple::Int=10000)
+  _check_degree_compatible(shift, unit; name="shift", reference_name="hyperplane degree")
+  _degree_is_zero(shift) && return 0
+  _degree_is_zero(unit) && error("the chosen hyperplane has degree zero, pass twist_power=... explicitly")
+
+  z = _zero_degree_of(unit)
+  cur = z
+  for n in 1:max_twist_multiple
+    cur = _degree_add(cur, unit)
+    cur == shift && return n
+  end
+  cur = z
+  for n in 1:max_twist_multiple
+    cur = _degree_sub(cur, unit)
+    cur == shift && return -n
+  end
+  error("shift is not a small integral multiple of the chosen hyperplane degree, pass twist_power=... or twist_divisor=... explicitly")
+end
+
+function twist_hyperplane_divisor(A::EmbeddedDivisorAmbient, shift;
+                                  hyperplane=nothing,
+                                  hyperplane_degree=nothing,
+                                  twist_power=nothing,
+                                  max_twist_multiple::Int=10000,
+                                  algorithm::Symbol=:GTZ, cache::Bool=true)
+  sh = shift === nothing ? _default_degree(A) : _normalize_explicit_shift(A, shift)
+  _degree_is_zero(sh) && return zero(A)
+  A.projective || error("nonzero graded shifts can only be represented by divisors in projective ambients")
+
+  h = hyperplane === nothing ? _default_hyperplane_element(A) : _as_ambient_poly(A, hyperplane)
+  _is_zero_on_X(A, h) && error("chosen hyperplane element is zero on the embedded variety")
+
+  n = if twist_power !== nothing
+    twist_power isa Integer || error("twist_power must be an integer")
+    Int(twist_power)
+  elseif sh isa Integer
+    Int(sh)
+  else
+    unit = hyperplane_degree === nothing ? _degree_like(A, h, sh) :
+           _strict_degree_arg(A, hyperplane_degree, sh; name="hyperplane_degree", reference_name="shift")
+    _degree_multiple_of_unit(sh, unit; max_twist_multiple=max_twist_multiple)
+  end
+  iszero(n) && return zero(A)
+
+  H = effective_embedded_divisor(A, ideal(A.R, [h]); algorithm=algorithm, cache=cache)
+  return n * H
+end
+
 function divisor_from_fractional_ideal(A::EmbeddedDivisorAmbient, N, denominator=one(A.R);
                                        convention::Symbol=:sections,
+                                       shift=nothing,
+                                       hyperplane=nothing,
+                                       hyperplane_degree=nothing,
+                                       twist_power=nothing,
+                                       twist_divisor=nothing,
+                                       max_twist_multiple::Int=10000,
                                        cleanup::Symbol=:primary,
                                        algorithm::Symbol=:GTZ,
                                        cache::Bool=true)
-  # If J = N/f is interpreted as O_X(D), then v_P(J) = -coeff_P(D),
-  # hence D = div(f) - div(N).  If J is interpreted as an ideal sheaf O_X(-D),
-  # take the negative convention instead.
   convention in (:sections, :line_bundle, :ideal, :ideal_sheaf) ||
     error("convention must be :sections/:line_bundle or :ideal/:ideal_sheaf")
   Namb = _as_ambient_ideal(A, N)
   f = _as_ambient_poly(A, denominator)
   is_zero(f) && error("zero cannot be used as common denominator")
   Nclean = _clean_rank_one_ideal(A, Namb; algorithm=algorithm, cache=cache)
-  D = principal_embedded_divisor(A, f; algorithm=algorithm, cache=cache) -
-      effective_embedded_divisor(A, Nclean; cleanup=cleanup, algorithm=algorithm, cache=cache)
-  D = normal_form_divisor(D; algorithm=algorithm, cache=cache)
+  Dfrac = principal_embedded_divisor(A, f; algorithm=algorithm, cache=cache) -
+          effective_embedded_divisor(A, Nclean; cleanup=cleanup, algorithm=algorithm, cache=cache)
+
+  sh = shift === nothing ? _default_degree(A) : _normalize_explicit_shift(A, shift)
+  Tw = if twist_divisor !== nothing
+    twist_divisor
+  elseif !_degree_is_zero(sh)
+    twist_hyperplane_divisor(A, sh; hyperplane=hyperplane,
+                             hyperplane_degree=hyperplane_degree,
+                             twist_power=twist_power,
+                             max_twist_multiple=max_twist_multiple,
+                             algorithm=algorithm, cache=cache)
+  else
+    zero(A)
+  end
+  D = normal_form_divisor(Dfrac - Tw; algorithm=algorithm, cache=cache)
+
   if convention in (:sections, :line_bundle)
     return D
   else
@@ -726,36 +1199,80 @@ end
 
 function divisor_from_graded_module(A::EmbeddedDivisorAmbient, M;
                                     denominator=one(A.R),
+                                    shift=nothing,
                                     convention::Symbol=:sections,
+                                    hyperplane=nothing,
+                                    hyperplane_degree=nothing,
+                                    twist_power=nothing,
+                                    twist_divisor=nothing,
+                                    max_twist_multiple::Int=10000,
                                     cleanup::Symbol=:primary,
                                     algorithm::Symbol=:GTZ,
-                                    cache::Bool=true)
-  N = rank_one_module_ideal(A, M; cleanup=cleanup, algorithm=algorithm, cache=cache)
-  return divisor_from_fractional_ideal(A, N, denominator;
-                                       convention=convention, cleanup=cleanup,
-                                       algorithm=algorithm, cache=cache)
+                                    cache::Bool=true,
+                                    kwargs...)
+  T = rank_one_module_trivialization(A, M; denominator=denominator,
+                                     shift=shift, cleanup=cleanup,
+                                     algorithm=algorithm, cache=cache,
+                                     kwargs...)
+  return divisor_from_fractional_ideal(A, T.numerator, T.denominator;
+                                       convention=convention, shift=T.shift,
+                                       hyperplane=hyperplane,
+                                       hyperplane_degree=hyperplane_degree,
+                                       twist_power=twist_power,
+                                       twist_divisor=twist_divisor,
+                                       max_twist_multiple=max_twist_multiple,
+                                       cleanup=cleanup, algorithm=algorithm,
+                                       cache=cache)
 end
 
 function divisor_from_graded_module(A::EmbeddedDivisorAmbient, M, images;
                                     denominator=one(A.R),
+                                    shift=nothing,
                                     convention::Symbol=:sections,
+                                    hyperplane=nothing,
+                                    hyperplane_degree=nothing,
+                                    twist_power=nothing,
+                                    twist_divisor=nothing,
+                                    max_twist_multiple::Int=10000,
                                     cleanup::Symbol=:primary,
                                     algorithm::Symbol=:GTZ,
-                                    cache::Bool=true)
-  N = rank_one_module_ideal(A, M, images; cleanup=cleanup, algorithm=algorithm, cache=cache)
-  return divisor_from_fractional_ideal(A, N, denominator;
-                                       convention=convention, cleanup=cleanup,
-                                       algorithm=algorithm, cache=cache)
+                                    cache::Bool=true,
+                                    kwargs...)
+  T = rank_one_module_trivialization(A, M, images; denominator=denominator,
+                                     shift=shift, cleanup=cleanup,
+                                     algorithm=algorithm, cache=cache,
+                                     kwargs...)
+  return divisor_from_fractional_ideal(A, T.numerator, T.denominator;
+                                       convention=convention, shift=T.shift,
+                                       hyperplane=hyperplane,
+                                       hyperplane_degree=hyperplane_degree,
+                                       twist_power=twist_power,
+                                       twist_divisor=twist_divisor,
+                                       max_twist_multiple=max_twist_multiple,
+                                       cleanup=cleanup, algorithm=algorithm,
+                                       cache=cache)
 end
 
 function divisor_from_graded_module(S::EmbeddedGradedModuleSections;
                                     convention::Symbol=:sections,
+                                    hyperplane=nothing,
+                                    hyperplane_degree=nothing,
+                                    twist_power=nothing,
+                                    twist_divisor=nothing,
+                                    max_twist_multiple::Int=10000,
                                     cleanup::Symbol=:primary,
                                     algorithm::Symbol=:GTZ,
                                     cache::Bool=true)
   return divisor_from_fractional_ideal(S.ambient, S.numerator, S.denominator;
-                                       convention=convention, cleanup=cleanup,
-                                       algorithm=algorithm, cache=cache)
+                                       convention=convention,
+                                       shift=S.trivialization_shift,
+                                       hyperplane=hyperplane,
+                                       hyperplane_degree=hyperplane_degree,
+                                       twist_power=twist_power,
+                                       twist_divisor=twist_divisor,
+                                       max_twist_multiple=max_twist_multiple,
+                                       cleanup=cleanup, algorithm=algorithm,
+                                       cache=cache)
 end
 
 embedded_divisor_from_graded_module(args...; kwargs...) = divisor_from_graded_module(args...; kwargs...)
