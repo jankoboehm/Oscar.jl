@@ -187,6 +187,7 @@ export Scheme
 export SchemeMor
 export SemidirectProductGroup
 export SesquilinearForm
+export SheafSectionBasis
 export SimpleGluing
 export SimplicialComplex
 export Singular
@@ -1528,6 +1529,7 @@ export projective_special_orthogonal_group
 export projective_special_unitary_group
 export projective_symplectic_group
 export projective_unitary_group
+export projective_coordinates
 export projectivization
 export prune
 export prune_with_map
@@ -1670,6 +1672,8 @@ export secondary_cone
 export secondary_invariants
 export secondary_polytope
 export section
+export section_denominator
+export section_numerators
 export sectional_genus
 export semi_invariants
 export semidirect_product
@@ -1693,6 +1697,7 @@ export sets
 export setwise_stabilizer_in_orthogonal_group
 export shape
 export sheaf_cohomology
+export sheaf_section_basis
 export sheaf_of_rings
 export short_right_transversal
 export shortest_path_dijkstra
@@ -1793,6 +1798,7 @@ export syz
 export syzygy_generators
 export table_of_marks
 export tail
+export tail_degree
 export tangent_lines
 export tangent_sheaf
 export tangent_space
