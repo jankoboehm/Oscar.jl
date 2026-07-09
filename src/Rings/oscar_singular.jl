@@ -67,6 +67,10 @@ function iso_oscar_singular_coeff_ring(F::AbstractAlgebra.Ring)
   return OscarSingularCoefficientRingMapGeneric(F, Singular.CoefficientRing(F))
 end
 
+function _iso_oscar_singular_coeff_ring_to(F::AbstractAlgebra.Ring, S)
+  return OscarSingularCoefficientRingMapGeneric(F, S)
+end
+
 # image(f, a) done by parent call overloading
 
 function preimage(f::OscarSingularCoefficientRingMapGeneric, a::Singular.n_unknown)
@@ -86,8 +90,8 @@ iso_oscar_singular_coeff_ring(R::ZZRing) = OscarSingularCoefficientRingMapGeneri
 # QQ
 iso_oscar_singular_coeff_ring(R::QQField) = OscarSingularCoefficientRingMapGeneric(R, Singular.Rationals())
 
-# prime field, small characteristic
-iso_oscar_singular_coeff_ring(R::fpField) = OscarSingularCoefficientRingMapGeneric(R, Singular.Fp(Int(characteristic(R))))
+# prime field
+iso_oscar_singular_coeff_ring(R::fpField) = OscarSingularCoefficientRingMapGeneric(R, _singular_prime_field(characteristic(R)))
 
 # ZZ/nZZ, n small and big
 iso_oscar_singular_coeff_ring(R::Union{zzModRing, ZZModRing}) = OscarSingularCoefficientRingMapGeneric(R, Singular.residue_ring(Singular.Integers(), BigInt(modulus(R)))[1]
@@ -158,14 +162,13 @@ function iso_oscar_singular_coeff_ring(F::FqField)
     Fabs = F
   end
 
-  ctx = Nemo._fq_default_ctx_type(F)
-  if ctx == Nemo._FQ_DEFAULT_NMOD
-    S = Singular.Fp(Int(characteristic(F)))
+  if absolute_degree(F) == 1
+    S = _singular_prime_field(characteristic(F))
   elseif nbits(characteristic(F)) <= 29
     # TODO: the Fp(Int(char)) can throw
     minpoly = modulus(F)
     Fa = parent(minpoly)
-    SFa, (Sa,) = Singular.FunctionField(Singular.Fp(Int(characteristic(F))),
+    SFa, (Sa,) = Singular.FunctionField(_singular_prime_field(characteristic(F)),
                                         _variables_for_singular(symbols(Fa)))
     Sminpoly = SFa(lift(ZZ, coeff(minpoly, 0)))
     var = one(SFa)
@@ -184,11 +187,28 @@ function iso_oscar_singular_coeff_ring(F::FqField)
   return OscarSingularCoefficientRingMapFqField(F, S)
 end
 
+function _iso_oscar_singular_coeff_ring_to(F::FqField, S)
+  if !is_absolute(F)
+    _, FabstoF = _absolute_field(F)
+    return OscarSingularCoefficientRingMapFqField(F, S, FabstoF)
+  end
+  return OscarSingularCoefficientRingMapFqField(F, S)
+end
+
 function image(f::OscarSingularCoefficientRingMapFqField, a::FqFieldElem)
   parent(a) !== domain(f) && error("Element not in domain")
 
   if codomain(f) isa Singular.N_ZpField
     return codomain(f)(lift(ZZ, a))
+  end
+
+  if codomain(f) isa Singular.N_ZnRing
+    return codomain(f)(lift(ZZ, a))
+  end
+
+  if codomain(f) isa Singular.N_UnknownSingularCoefficientRing
+    absolute_degree(domain(f)) == 1 || error("Cannot convert non-prime finite field element to unknown Singular coefficient ring")
+    return codomain(f)(BigInt(lift(ZZ, a)))
   end
 
   if codomain(f) isa Singular.N_Field
@@ -213,6 +233,19 @@ end
 function preimage(f::OscarSingularCoefficientRingMapFqField, a::Singular.n_Zp)
   parent(a) !== codomain(f) && error("Element not in codomain")
   return domain(f)(Int(a))
+end
+
+function preimage(f::OscarSingularCoefficientRingMapFqField, a::Singular.n_Zn)
+  parent(a) !== codomain(f) && error("Element not in codomain")
+  return domain(f)(ZZ(BigInt(a)))
+end
+
+function preimage(f::OscarSingularCoefficientRingMapFqField, a::Singular.n_unknownsingularcoefficient)
+  parent(a) !== codomain(f) && error("Element not in codomain")
+  absolute_degree(domain(f)) == 1 || error("Cannot convert unknown Singular coefficient to non-prime finite field element")
+  S = parent(a)
+  z = GC.@preserve a S Singular.libSingular.n_GetMPZ(a.ptr, S.ptr)
+  return domain(f)(ZZ(z))
 end
 
 function preimage(f::OscarSingularCoefficientRingMapFqField, a::Singular.n_algExt)
@@ -411,6 +444,11 @@ function iso_oscar_singular_poly_ring(Rx::MPolyRing, ord::Union{Symbol, Singular
   return OscarSingularPolyRingMap(Rx, Sx, fcoeff)
 end
 
+function _iso_oscar_singular_poly_ring_to(Rx::MPolyRing, Sx::Singular.PolyRing)
+  fcoeff = _iso_oscar_singular_coeff_ring_to(base_ring(Rx), base_ring(Sx))
+  return OscarSingularPolyRingMap(Rx, Sx, fcoeff)
+end
+
 function image(f::OscarSingularPolyRingMap, a)
   parent(a) !== domain(f) && error("Element not in domain")
   g = MPolyBuildCtx(codomain(f))
@@ -448,8 +486,7 @@ end
 function _iso_oscar_singular_poly_ring(R::MPolyQuoRing)
   _groebner_basis(R)
   Rorig = base_ring(R)
-  f = iso_oscar_singular_poly_ring(Rorig)
-  @assert base_ring(codomain(f)) === base_ring(R.SQR)
+  f = _iso_oscar_singular_poly_ring_to(Rorig, R.SQR)
   return OscarSingularPolyRingQuoMap(R, R.SQR, f)
 end
 
