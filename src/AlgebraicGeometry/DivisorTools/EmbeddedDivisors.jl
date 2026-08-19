@@ -76,7 +76,6 @@ end
 
 function _check_same_ambient(A::EmbeddedDivisorAmbient, B::EmbeddedDivisorAmbient)
   A.R === B.R || error("divisors have different ambient polynomial rings")
-  _ideal_equal(A.X, B.X) || error("divisors live on different embedded varieties")
   A.projective == B.projective || error("cannot mix affine and projective divisors")
   if A.projective && B.projective
     if A.irrelevant === nothing || B.irrelevant === nothing
@@ -85,6 +84,8 @@ function _check_same_ambient(A::EmbeddedDivisorAmbient, B::EmbeddedDivisorAmbien
       _ideal_equal(A.irrelevant, B.irrelevant) || error("different irrelevant ideals")
     end
   end
+  _ideal_equal(_geometric_coordinate_ideal(A), _geometric_coordinate_ideal(B)) ||
+    error("divisors live on different embedded varieties")
   return nothing
 end
 
@@ -108,7 +109,8 @@ end
 function _as_ambient_ideal(A::EmbeddedDivisorAmbient, I::MPolyQuoIdeal)
   Q = base_ring(I)
   base_ring(Q) === A.R || error("quotient ideal is not over the ambient polynomial ring")
-  _ideal_equal(modulus(Q), A.X) ||
+  _ideal_equal(_saturate_if_projective(A, modulus(Q)),
+               _geometric_coordinate_ideal(A)) ||
     error("quotient ideal is not in the coordinate ring of the embedded ambient")
   V = elem_type(A.R)[]
   for f in gens(I)
@@ -127,6 +129,14 @@ function _saturate_if_projective(A::EmbeddedDivisorAmbient, I::MPolyIdeal)
   return saturation(I, _irrelevant_ideal(A))
 end
 
+function _geometric_coordinate_ideal(A::EmbeddedDivisorAmbient)
+  X = A.geometric_coordinate_ideal_cache[]
+  X === nothing || return X
+  X = _saturate_if_projective(A, A.X)
+  A.geometric_coordinate_ideal_cache[] = X
+  return X
+end
+
 function _as_ambient_poly(A::EmbeddedDivisorAmbient, f)
   if f isa elem_type(A.R)
     parent(f) === A.R || error("polynomial is not in the ambient polynomial ring")
@@ -143,17 +153,74 @@ function _principal_ideal(A::EmbeddedDivisorAmbient, f)
   return ideal(A.R, [_as_ambient_poly(A, f)])
 end
 
-function _first_nonzero_generator(I::MPolyIdeal)
+function _is_regular_on_X(A::EmbeddedDivisorAmbient, f)
+  ff = _as_ambient_poly(A, f)
+  _is_zero_on_X(A, ff) && return false
+  X = _geometric_coordinate_ideal(A)
+  (_is_one_elem(ff) || is_zero(X)) && return true
+  annihilator = quotient(X, ideal(A.R, [ff])) + X
+  annihilator = _saturate_if_projective(A, annihilator)
+  return _ideal_equal(annihilator, X)
+end
+
+function _push_ideal_element_candidate!(candidates::Vector{T}, f::T) where {T}
+  is_zero(f) && return candidates
+  f in candidates || push!(candidates, f)
+  return candidates
+end
+
+function _regular_ideal_element(A::EmbeddedDivisorAmbient, I::MPolyIdeal)
+  candidates = elem_type(A.R)[]
+  homogeneous_groups = Vector{Vector{elem_type(A.R)}}()
   for f in gens(I)
-    is_zero(f) || return f
+    is_zero(f) && continue
+    if A.projective && !is_homogeneous(f)
+      continue
+    end
+    _push_ideal_element_candidate!(candidates, f)
+    A.projective || continue
+    i = findfirst(group -> degree(group[1]) == degree(f), homogeneous_groups)
+    if i === nothing
+      push!(homogeneous_groups, elem_type(A.R)[f])
+    else
+      push!(homogeneous_groups[i], f)
+    end
   end
-  error("the ideal has no nonzero generator")
+
+  # Individual generators are cheapest and preserve the previous choice on
+  # integral schemes.  Same-degree linear combinations are needed on reducible
+  # schemes, where every listed generator may be a zero divisor although their
+  # sum is regular.
+  groups = A.projective ? homogeneous_groups : [copy(candidates)]
+  for group in groups
+    length(group) > 1 || continue
+    _push_ideal_element_candidate!(candidates,
+                                   sum(group; init=zero(A.R)))
+    K = base_ring(A.R)
+    for t in 2:9
+      lambda = K(t)
+      coefficient = one(K)
+      f = zero(A.R)
+      for h in group
+        f += A.R(coefficient)*h
+        coefficient *= lambda
+      end
+      _push_ideal_element_candidate!(candidates, f)
+    end
+  end
+
+  for f in candidates
+    _is_regular_on_X(A, f) && return f
+  end
+  kind = A.projective ? "homogeneous " : ""
+  error("could not find a $(kind)non-zero-divisor in the positive divisor ideal; pass an equivalent divisor representation with a regular numerator element")
 end
 
 function _empty_primary_result_fallback(A::EmbeddedDivisorAmbient, K::MPolyIdeal)
   # Avoid returning an empty intersection.  If K is zero on X, keep X, otherwise
   # no divisor condition remains, hence the unit ideal.
-  return _ideal_equal(K, A.X) ? A.X : _unit_ideal(A)
+  X = _geometric_coordinate_ideal(A)
+  return _ideal_equal(K, X) ? X : _unit_ideal(A)
 end
 
 ####################
@@ -164,7 +231,9 @@ function embedded_divisor_ambient(R; projective::Bool=false, irrelevant=nothing)
   if irr !== nothing
     _base_ring_check(R, irr)
   end
-  return EmbeddedDivisorAmbient{elem_type(R)}(R, X, projective, irr)
+  A = EmbeddedDivisorAmbient{elem_type(R)}(R, X, projective, irr)
+  A.geometric_coordinate_ideal_cache[] = X
+  return A
 end
 
 function embedded_divisor_ambient(X::MPolyIdeal; projective::Bool=false,
@@ -178,7 +247,9 @@ function embedded_divisor_ambient(X::MPolyIdeal; projective::Bool=false,
   if projective && saturate
     X0 = saturation(X0, irr)
   end
-  return EmbeddedDivisorAmbient{elem_type(R)}(R, X0, projective, irr)
+  A = EmbeddedDivisorAmbient{elem_type(R)}(R, X0, projective, irr)
+  (!projective || saturate) && (A.geometric_coordinate_ideal_cache[] = X0)
+  return A
 end
 
 function embedded_divisor_ambient(A::MPolyQuoRing; kwargs...)
@@ -193,7 +264,7 @@ end
 
 
 function _minimal_primes_of_X(A::EmbeddedDivisorAmbient; algorithm::Symbol=:GTZ)
-  Ps = minimal_primes(A.X; algorithm=algorithm)
+  Ps = minimal_primes(_geometric_coordinate_ideal(A); algorithm=algorithm)
   if !A.projective
     return Ps
   end
@@ -229,9 +300,10 @@ function _clean_codim_one(A::EmbeddedDivisorAmbient, I::MPolyIdeal;
                           algorithm::Symbol=:GTZ, cache::Bool=true,
                           allow_zero::Bool=false)
   K = _saturate_if_projective(A, _relative_ideal(A, I))
+  X = _geometric_coordinate_ideal(A)
 
-  if _ideal_equal(K, A.X)
-    allow_zero && return A.X
+  if _ideal_equal(K, X)
+    allow_zero && return X
     error("input ideal is zero on the embedded variety, it is not a divisor ideal")
   end
 
@@ -449,7 +521,8 @@ function _check_module_base_ring(A::EmbeddedDivisorAmbient, M)
   elseif Rm isa MPolyQuoRing
     base_ring(Rm) === A.R ||
       error("module is over a quotient ring whose base ring is not the divisor ambient ring")
-    _ideal_equal(modulus(Rm), A.X) ||
+    _ideal_equal(_saturate_if_projective(A, modulus(Rm)),
+                 _geometric_coordinate_ideal(A)) ||
       error("module quotient ring is not the coordinate ring of this embedded ambient")
     return :quotient
   else
@@ -489,7 +562,7 @@ end
 function _is_zero_on_X(A::EmbeddedDivisorAmbient, f)
   ff = _as_ambient_poly(A, f)
   is_zero(ff) && return true
-  return is_subset(ideal(A.R, [ff]), A.X)
+  return is_subset(ideal(A.R, [ff]), _geometric_coordinate_ideal(A))
 end
 
 function _nonzero_images_on_X(A::EmbeddedDivisorAmbient, images)
@@ -597,7 +670,7 @@ function _kernel_vectors_annihilating_relations(A::EmbeddedDivisorAmbient,
                                                 rel_rows::Vector, ncols::Int)
   isempty(rel_rows) && return _identity_rows(A, ncols)
 
-  QX, _ = quo(A.R, A.X)
+  QX, _ = quo(A.R, _geometric_coordinate_ideal(A))
   E = free_module(QX, ncols)
   G = free_module(QX, length(rel_rows))
 
@@ -783,7 +856,7 @@ function _degree_like(A::EmbeddedDivisorAmbient, f, like)
       return d
     catch ambient_err
       try
-        QX, _ = quo(A.R, A.X)
+        QX, _ = quo(A.R, _geometric_coordinate_ideal(A))
         dX = degree(QX(f))
         _check_degree_compatible(dX, like; name="quotient polynomial degree", reference_name="reference degree")
         return dX
@@ -990,7 +1063,7 @@ function _target_numerator_degree(A::EmbeddedDivisorAmbient, denominator,
 end
 
 function _homogeneous_coordinate_basis(A::EmbeddedDivisorAmbient, deg)
-  QX, _ = quo(A.R, A.X)
+  QX, _ = quo(A.R, _geometric_coordinate_ideal(A))
   L = homogeneous_component(QX, deg)
   V = L[1]
   emb = L[2]
@@ -1002,12 +1075,13 @@ function _homogeneous_coordinate_basis(A::EmbeddedDivisorAmbient, deg)
 end
 
 function _graded_piece_basis_of_ideal(A::EmbeddedDivisorAmbient, I::MPolyIdeal, deg)
-  N = _saturate_if_projective(A, I + A.X)
+  X = _geometric_coordinate_ideal(A)
+  N = _saturate_if_projective(A, I + X)
 
-  if _ideal_equal(N, A.X)
+  if _ideal_equal(N, X)
     # The zero module on X has no sections in any degree.  Return the kernel
     # of the identity on the ambient degree piece as a zero vector space.
-    QX, _ = quo(A.R, A.X)
+    QX, _ = quo(A.R, X)
     L = homogeneous_component(QX, deg)
     VX = L[1]
     embX = L[2]
@@ -1020,8 +1094,8 @@ function _graded_piece_basis_of_ideal(A::EmbeddedDivisorAmbient, I::MPolyIdeal, 
     return _homogeneous_coordinate_basis(A, deg)
   end
 
-  QX, _ = quo(A.R, A.X)
-  QC, _ = quo(A.R, N + A.X)
+  QX, _ = quo(A.R, X)
+  QC, _ = quo(A.R, N + X)
 
   LX = homogeneous_component(QX, deg)
   VX = LX[1]
@@ -1284,10 +1358,10 @@ function global_sections_ideal(D::EmbeddedDivisor; algorithm::Symbol=:GTZ,
                                cache::Bool=true, cleanup::Symbol=:primary)
   # Return the fractional ideal Γ(X, O_X(D)) as numerator/f:
   #   { h/f | h ∈ numerator }
-  # for a nonzero f ∈ D.num.  This mirrors divisors.lib's computation
+  # for a non-zero-divisor f ∈ D.num.  This mirrors divisors.lib's computation
   # sat((f*D.den) : D.num)/f, but uses primary-decomposition cleanup as well.
   A = D.ambient
-  f = _first_nonzero_generator(D.num)
+  f = _regular_ideal_element(A, D.num)
   raw = quotient(ideal(A.R, [f]) * D.den + A.X, D.num)
   N = if cleanup == :none
     _saturate_if_projective(A, raw + A.X)

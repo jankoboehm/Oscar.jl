@@ -50,6 +50,45 @@ end
   @test is_one(positive_ideal(E))
 end
 
+@testset "unsaturated projective coordinate ideals" begin
+  S, (X, Y, Z) = graded_polynomial_ring(QQ, [:X, :Y, :Z])
+  e = grading_group(S)[1]
+  IX = ideal(S, [X^2, X*Y, X*Z])
+  Araw = embedded_divisor_ambient(IX; projective=true, saturate=false)
+  Asat = embedded_divisor_ambient(IX; projective=true)
+
+  # Keep the requested raw presentation, but use its saturation for operations
+  # on Proj.  Here Proj(S/IX) is the line X = 0.
+  @test Oscar._ideal_equal(coordinate_ideal(Araw), IX)
+  @test !Oscar._ideal_equal(coordinate_ideal(Araw), coordinate_ideal(Asat))
+
+  Draw = effective_embedded_divisor(Araw, ideal(S, [Y]))
+  Dsat = effective_embedded_divisor(Asat, ideal(S, [Y]))
+  @test is_equal_divisor(Draw, Dsat)
+  @test_throws ErrorException effective_embedded_divisor(Araw, ideal(S, [X]))
+
+  O1 = graded_module_global_sections(Araw, ideal(S, [one(S)]); degree=e)
+  @test length(section_basis_numerators(O1)) == 2
+  @test Oscar._ideal_equal(ideal(S, section_basis_numerators(O1)), ideal(S, [Y, Z]))
+
+  Ozero = graded_module_global_sections(Araw, IX; degree=e)
+  @test isempty(section_basis_numerators(Ozero))
+
+  Craw = trivialized_section_basis(Draw; cleanup=:none, verify=true)
+  Csat = trivialized_section_basis(Dsat; cleanup=:none, verify=true)
+  @test Set(projective_coordinates(Craw)) == Set([Y, Z])
+  @test Set(projective_coordinates(Craw)) == Set(projective_coordinates(Csat))
+  @test section_denominator(Craw) == section_denominator(Csat) == Y
+
+  Qsat, _ = quo(S, coordinate_ideal(Asat))
+  Dq = effective_embedded_divisor(Araw, ideal(Qsat, [Qsat(Y)]))
+  @test is_equal_divisor(Dq, Draw)
+
+  Qraw, _ = quo(S, IX)
+  Fraw = graded_free_module(Qraw, 1)
+  @test is_one(rank_one_module_ideal(Asat, Fraw))
+end
+
 @testset "graded rank-one module bridge" begin
   S, (X, Y, Z) = graded_polynomial_ring(QQ, [:X, :Y, :Z])
   G = grading_group(S)
@@ -134,4 +173,47 @@ end
   @test length(nums) == 4
   @test all(h -> degree(h) == e, nums)
   @test all(h -> !is_zero(h), nums)
+end
+
+@testset "BGG sections from positive and negative divisor parts" begin
+  # Preserve the fractional denominator while turning a divisor into map coordinates.
+  P = projective_space(QQ, [:X, :Y, :Z])
+  S = homogeneous_coordinate_ring(P)
+  X, Y, Z = gens(S)
+  A = embedded_divisor_ambient(S; projective=true)
+  D = embedded_divisor(A, ideal(S, [X^2]), ideal(S, [Y]); cleanup=:none)
+
+  C = trivialized_section_basis(D; cleanup=:none, verify=true)
+  @test length(C) == 3
+  @test Set(projective_coordinates(C)) == Set([X*Y, Y^2, Y*Z])
+  @test section_denominator(C) == X^2
+  @test twist(C) == 0
+  @test twist(underlying_section_basis(C)) == 0
+  @test is_zero(section_trivialization_shift(C))
+
+  phi = rational_map(P, P, projective_coordinates(C))
+  @test domain(phi) === P
+  @test codomain(phi) === P
+
+  Ctail = trivialized_section_basis(D; tail_degree=1,
+                                    bgg_denominator=Z, cleanup=:none)
+  @test Set(projective_coordinates(Ctail)) ==
+        Set([Z*h for h in projective_coordinates(C)])
+  @test section_denominator(Ctail) == X^2*Z
+
+  C1 = trivialized_section_basis(D, 1; cleanup=:none)
+  @test length(C1) == 6
+  @test Set(projective_coordinates(C1)) ==
+        Set([Y*m for m in monomial_basis(S, 2)])
+  @test section_denominator(C1) == X^2
+
+  # On a reducible scheme both displayed generators can be zero divisors, even
+  # though their sum is a valid element of the positive ideal.  Generator order
+  # must not make the fractional-ideal denominator invalid.
+  Rred, (u, v, w) = graded_polynomial_ring(QQ, [:u, :v, :w])
+  Ared = embedded_divisor_ambient(ideal(Rred, [u*v]); projective=true)
+  Dred = embedded_divisor(Ared, ideal(Rred, [u, v]), ideal(Rred, [one(Rred)]);
+                          cleanup=:none)
+  Sred = global_sections_ideal(Dred; cleanup=:none)
+  @test section_denominator(Sred) == u + v
 end

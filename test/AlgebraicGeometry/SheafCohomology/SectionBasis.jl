@@ -18,6 +18,70 @@
   @test Set(projective_coordinates(B1)) == Set([x*m for m in monomial_basis(R, 1)])
 end
 
+@testset "safe tail and denominator selection" begin
+  R, (x, y, z) = graded_polynomial_ring(QQ, [:x, :y, :z])
+
+  # A saturated module needs no boundary correction: automatic mode should
+  # keep the regularity degree and its degree-zero evaluation element.
+  O = graded_free_module(R, 1)
+  BO = sheaf_section_basis(O, 0)
+  @test tail_degree(BO) == 0
+  @test isone(section_denominator(BO))
+
+  # The second summand is irrelevant torsion.  At reg(M) = 0 it would give a
+  # spurious section, so the automatic tail must advance by one degree.
+  F = graded_free_module(R, 2)
+  M, _ = quo(F, [x*F[2], y*F[2], z*F[2]])
+  @test cm_regularity(M) == 0
+  B = sheaf_section_basis(M, 0; verify=true)
+  @test tail_degree(B) == 1
+  @test length(B) == 1
+  @test degree(Int, section_denominator(B)) == 1
+  @test_throws ErrorException sheaf_section_basis(M, 0;
+                                                   tail_degree=0,
+                                                   verify=true)
+
+  # Evaluation at x kills the unique section of the line x=0.  A regular
+  # evaluation element keeps the basis nonzero.
+  Mline = quotient_ring_as_module(ideal(R, [x]))
+  @test_throws ErrorException sheaf_section_basis(Mline, 0;
+                                                   tail_degree=1,
+                                                   denominator=x,
+                                                   verify=true)
+  Bline = sheaf_section_basis(Mline, 0;
+                              tail_degree=1,
+                              denominator=y,
+                              verify=true)
+  @test length(Bline) == 1
+  @test projective_coordinates(Bline) == [y]
+
+  # On two reduced coordinate points, both monomial denominators are zero
+  # divisors.  The automatic search must reach the regular sum x+y.
+  R2, (u, v) = graded_polynomial_ring(QQ, [:u, :v])
+  Mpoints = quotient_ring_as_module(ideal(R2, [u*v]))
+  Bpoints = sheaf_section_basis(Mpoints, 0; tail_degree=1, verify=true)
+  @test length(Bpoints) == 2
+  @test section_denominator(Bpoints) == u + v
+  @test Set(projective_coordinates(Bpoints)) == Set([u, v])
+  @test_throws ErrorException sheaf_section_basis(Mpoints, 0;
+                                                   tail_degree=1,
+                                                   denominator=u)
+
+  # The first monomial and the full sum can both be zero divisors.  The
+  # deterministic generic pencil must then find, and exactly verify, another
+  # linear form.
+  Mthree = quotient_ring_as_module(ideal(R2, [u*v*(u + v)]))
+  Bthree = sheaf_section_basis(Mthree, 1)
+  @test tail_degree(Bthree) == 2
+  @test length(Bthree) == 3
+  @test !(section_denominator(Bthree) in [u, v, u + v])
+
+  Rother, (xother, _, _) = graded_polynomial_ring(QQ, [:x, :y, :z])
+  @test_throws ErrorException sheaf_section_basis(O, 0;
+                                                   tail_degree=1,
+                                                   denominator=xother)
+end
+
 @testset "anticanonical map for rational normal curves" begin
   R2, (x0, x1, x2) = graded_polynomial_ring(QQ, [:x0, :x1, :x2])
   OC = quotient_ring_as_module(ideal(R2, [x0*x2 - x1^2]))
@@ -59,4 +123,56 @@ end
 
   B2 = sheaf_section_basis(OX, 2; tail_degree=2, verify=true)
   @test length(projective_coordinates(B2)) == 14
+end
+
+@testset "BGG sections of a presented line bundle" begin
+  # Scalarize a redundant two-generator presentation of O(1) into map coordinates.
+  P = projective_space(QQ, [:X, :Y, :Z])
+  S = homogeneous_coordinate_ring(P)
+  X, Y, Z = gens(S)
+  G = grading_group(S)
+  e = G[1]
+  z = zero(G)
+  A = embedded_divisor_ambient(S; projective=true)
+
+  F = graded_free_module(S, [-e, z])
+  M, _ = quo(F, [F[2] - X*F[1]])
+  B = sheaf_section_basis(M, 0; verify=true)
+  @test_throws ErrorException projective_coordinates(B)
+
+  T = rank_one_module_trivialization(A, M)
+  C = trivialized_section_basis(B, T)
+  @test length(C) == 3
+  @test Set(section_numerators(C)) == Set([X, Y, Z])
+  @test is_one(section_denominator(C))
+  @test trivialization_numerator(T, M[2]) == X
+  @test underlying_section_basis(C) === B
+  @test section_trivialization(C) === T
+
+  phi = rational_map(P, P, projective_coordinates(C))
+  @test domain(phi) === P
+  @test codomain(phi) === P
+
+  TX = rank_one_module_trivialization(A, M, [one(S), X];
+                                      denominator=X, cleanup=:none)
+  CX = trivialized_section_basis(B, TX)
+  @test projective_coordinates(CX) == projective_coordinates(C)
+  @test section_denominator(CX) == X
+
+  Tbad = rank_one_module_trivialization(A, M, [one(S), Y]; cleanup=:none)
+  @test_throws ErrorException trivialization_numerator(Tbad, M[1])
+  @test_throws ErrorException trivialized_section_basis(B, Tbad)
+
+  Cdirect = trivialized_section_basis(A, M, 0; verify=true)
+  @test Set(projective_coordinates(Cdirect)) == Set([X, Y, Z])
+
+  Ared = embedded_divisor_ambient(ideal(S, [X*Y]); projective=true)
+  Mred = quotient_ring_as_module(coordinate_ideal(Ared))
+  @test_throws ErrorException sheaf_section_basis(Mred, 0;
+                                                   tail_degree=1,
+                                                   denominator=X)
+  Bred = sheaf_section_basis(Mred, 0; tail_degree=1, denominator=Z)
+  Tred = rank_one_module_trivialization(Ared, Mred, [one(S)];
+                                        denominator=X, cleanup=:none)
+  @test_throws ErrorException trivialized_section_basis(Bred, Tred)
 end
